@@ -1,0 +1,72 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_USE_MOCK_API: "false"
+        VITE_API_BASE_URL: ""
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    environment:
+      - BACKEND_URL=http://backend:8080
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - OPENAI_DUMP_PROMPTS=true
+      - OPENAI_PROMPT_DUMP_DIR=/app/logs/openai_prompts
+      - GPT5_V2_DUMP_PROMPTS=true
+      - GPT5_V2_ENABLED=true
+      - OPENAI_DUMP_PROMPTS=true
+      - USE_OPENAI=true
+      - STYLE_GUIDES_FILE=/app/seed/style_guides.json
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./logs/openai_prompts:/app/logs/openai_prompts
+      - ./style_guides.json:/app/seed/style_guides.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

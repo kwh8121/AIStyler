@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Caption rules divided into 2 expert groups for parallel detection",
+    "total_experts": 2,
+    "created_date": "2025-11-03"
+  },
+  "experts": {
+    "expert_1_people_attribution": {
+      "expert_id": "expert_c1",
+      "name": "People & Attribution Specialist",
+      "description": "Names, titles, enumeration, and source attribution (C16/C17 detection only)",
+      "rule_ids": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C16",
+        "C17"
+      ]
+    },
+    "expert_2_structure_dates": {
+      "expert_id": "expert_c2",
+      "name": "Structure & Dates Specialist",
+      "description": "Sentence structure, date/day phrasing, and general caption style",
+      "rule_ids": [
+        "C10",
+        "C11",
+        "C14",
+        "C19",
+        "C20",
+        "C21",
+        "C22",
+        "C23",
+        "C25",
+        "C26",
+        "C30",
+        "C31",
+        "C33"
+      ]
+    }
+  },
+  "notes": [
+    "Exclude regex-handled rules here: C09, C13, C15, C18, C24, C27, C28, C29, C32",
+    "If a listed rule_id is absent in ai_rules, it is ignored safely"
+  ]
+}

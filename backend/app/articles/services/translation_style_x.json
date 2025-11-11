@@ -1,0 +1,133 @@
+{
+  "version": "0.1",
+  "source": "style_guides (1).json",
+  "llm_prompt_hint": "Translate to EN-US and apply these rules during translation.",
+  "translation_guidelines": [
+    {
+      "id": "A02_TITLE_CAPITALIZATION",
+      "applies_to": ["articles", "captions"],
+      "instruction": "Capitalize titles when they precede a name; lowercase when they follow the name."
+    },
+    {
+      "id": "A04_A23_DATES_GENERAL",
+      "applies_to": ["articles", "captions"],
+      "instruction": "If within 7 days of today, use weekday (e.g., Monday). If older than 7 days, use exact date. Omit the year if it’s the current year."
+    },
+    {
+      "id": "A05_DATE_RANGE",
+      "applies_to": ["articles", "captions"],
+      "instruction": "Same month: include only day (Apr. 28 to 30). Different months: include month and day for both ends (Apr. 28 to May 6)."
+    },
+    {
+      "id": "A08_DATE_NUMERALS",
+      "applies_to": ["articles"],
+      "instruction": "Always use numerals for dates (Dec. 5, 2022). Do not spell out dates."
+    },
+    {
+      "id": "A10_MONTH_ABBREVIATION",
+      "applies_to": ["articles"],
+      "instruction": "Abbreviate months only when used with a date, except for March, April, May, June, July. If only month+year, spell out the month."
+    },
+    {
+      "id": "A06_LOCATION_WORDING",
+      "applies_to": ["articles", "captions"],
+      "instruction": "Avoid ‘located/held/held at/located in’. Use simple prepositions ‘at’ or ‘in’."
+    },
+    {
+      "id": "A07_CURRENCY_WON_TO_USD_FIRST_MENTION",
+      "applies_to": ["articles"],
+      "instruction": "For the first occurrence of Korean won, append USD conversion in parentheses. Subsequent mentions use won-only."
+    },
+    {
+      "id": "A09_KOREAN_NAME_ROMANIZATION",
+      "applies_to": ["articles", "captions"],
+      "instruction": "Write Korean names as Family-name first + hyphenated given-name (e.g., Jung Woo-sung, Moon Ga-bi)."
+    },
+    {
+      "id": "A11_A12_ACRONYMS",
+      "applies_to": ["articles"],
+      "instruction": "First mention: spell out full term then acronym in parentheses. Subsequent mentions: acronym only. For scientific terms, optionally spell out once then use abbreviation."
+    },
+    {
+      "id": "A13_A28_NUMBERS",
+      "applies_to": ["articles"],
+      "instruction": "Use numerals for 10 and above; spell out one to nine unless directly preceding units (percent, million, degrees). Ages/time/measurements/percentages use numerals."
+    },
+    {
+      "id": "A14_PERCENT_WORD",
+      "applies_to": ["articles"],
+      "instruction": "Use the word ‘percent’; do not use the % symbol."
+    },
+    {
+      "id": "A15_A16_A19_QUOTES_PUNCTUATION",
+      "applies_to": ["articles"],
+      "instruction": "Use double quotation marks for direct quotes. Place commas and periods inside the closing quotation marks. Full-sentence quotes keep end punctuation inside."
+    },
+    {
+      "id": "A17_SINGLE_QUOTE_WITHIN_DOUBLE",
+      "applies_to": ["articles"],
+      "instruction": "For quotes within quotes, use single quotes inside double quotes."
+    },
+    {
+      "id": "A22_TITLES_IN_DOUBLE_QUOTES",
+      "applies_to": ["articles"],
+      "instruction": "Put movie and song titles in double quotes in running text."
+    },
+    {
+      "id": "A27_MOUNT_NAMING",
+      "applies_to": ["articles"],
+      "instruction": "Prefer ‘Mount X’ over ‘Mt. X’ or ‘X Mountain’ (e.g., Mount Halla)."
+    },
+    {
+      "id": "A29_UNITS_SPELLED_OUT",
+      "applies_to": ["articles"],
+      "instruction": "Spell out measurement units (centimeters, kilometers, degrees Celsius). Do not abbreviate."
+    },
+    {
+      "id": "A30_IN_YEOUIDO",
+      "applies_to": ["articles"],
+      "instruction": "Use ‘in’ (not ‘on’) for areas like Yeouido."
+    },
+    {
+      "id": "A31_JOSEON_DYNASTY",
+      "applies_to": ["articles"],
+      "instruction": "Use ‘Joseon Dynasty’; avoid ‘Joseon Kingdom’."
+    },
+    {
+      "id": "A32_TEAM_PLURAL_VERB",
+      "applies_to": ["articles", "sports"],
+      "instruction": "Sports teams take plural verbs (e.g., The Miami Heat are ...)."
+    },
+    {
+      "id": "A33_NATIONAL_TEAM_SINGULAR_VERB",
+      "applies_to": ["articles", "sports"],
+      "instruction": "National teams (as entities) take singular verbs (e.g., Korea defeats ...)."
+    },
+    {
+      "id": "A34_A35_WORD_FORMS",
+      "applies_to": ["articles"],
+      "instruction": "Use two words for ‘child care’, ‘health care’, ‘task force’. Use one word ‘birthrate’."
+    },
+    {
+      "id": "A36_VARIANTS_STANDARDIZE",
+      "applies_to": ["articles"],
+      "instruction": "Prefer ‘toward, forward, amid, among, middle’ over ‘towards, forwards, amidst, amongst, midst’."
+    },
+    {
+      "id": "A37_HYPHEN_COMPOUNDS",
+      "applies_to": ["articles"],
+      "instruction": "Use hyphens in compounds like ‘prosecutor-turned-president’."
+    },
+    {
+      "id": "A41_GOVERNMENT_COMPLEX",
+      "applies_to": ["articles"],
+      "instruction": "Do not use ‘in’ after ‘Government Complex Seoul/Sejong’."
+    },
+    {
+      "id": "A42_REPEAT_TITLES",
+      "applies_to": ["articles"],
+      "instruction": "Avoid repeating ‘Chairman Lee’ in subsequent mentions; use ‘the chairman’ or the surname."
+    }
+  ]
+}
+

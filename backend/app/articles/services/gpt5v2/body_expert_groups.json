@@ -1,0 +1,83 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Body rules divided into 3 expert groups for parallel detection",
+    "total_experts": 3,
+    "total_groups": 9,
+    "created_date": "2025-10-20"
+  },
+  "experts": {
+    "expert_1_formatting": {
+      "expert_id": "expert_1",
+      "name": "Formatting Specialist",
+      "description": "Expert in dates, abbreviations, and number notation",
+      "groups": [
+        "날짜 표기법",
+        "약어/두문자어",
+        "숫자 표기법"
+      ],
+      "rule_ids": [
+        "A04", "A05", "A08", "A10", "A23",
+        "A11", "A12",
+        "A28", "A29"
+      ],
+      "group_details": {
+        "그룹1_날짜표기법": ["A04", "A05", "A08", "A10", "A23"],
+        "그룹2_약어": ["A11", "A12"],
+        "그룹3_숫자표기법": ["A28", "A29"]
+      }
+    },
+    "expert_2_quotation_naming": {
+      "expert_id": "expert_2",
+      "name": "Quotation & Naming Specialist",
+      "description": "Expert in quotation marks, title capitalization, and Korean-specific notation",
+      "groups": [
+        "따옴표 사용",
+        "직함 대문자화",
+        "한국 관련 표기"
+      ],
+      "rule_ids": [
+        "A15", "A16", "A17", "A19", "A22",
+        "A02", "A18",
+        "A09", "A26", "A27", "A30"
+      ],
+      "group_details": {
+        "그룹4_따옴표": ["A15", "A16", "A17", "A19", "A22"],
+        "그룹5_직함대문자": ["A02", "A18"],
+        "그룹6_한국관련": ["A09", "A26", "A27", "A30"]
+      }
+    },
+    "expert_3_grammar": {
+      "expert_id": "expert_3",
+      "name": "Grammar Specialist",
+      "description": "Expert in verb agreement, word choice, and general grammar rules",
+      "groups": [
+        "단수/복수 동사",
+        "특정 단어 표기법",
+        "기타 문법"
+      ],
+      "rule_ids": [
+        "A32", "A33",
+        "A36",
+        "A06", "A07", "A20", "A21", "A24", "A37", "A38", "A39", "A41", "A42"
+      ],
+      "group_details": {
+        "그룹7_동사일치": ["A32", "A33"],
+        "그룹8_단어표기": ["A36"],
+        "그룹9_기타문법": ["A06", "A07", "A20", "A21", "A24", "A37", "A38", "A39", "A41", "A42"]
+      }
+    }
+  },
+  "rule_count_per_expert": {
+    "expert_1": 9,
+    "expert_2": 11,
+    "expert_3": 13
+  },
+  "notes": [
+    "Expert 1 focuses on formatting rules that require pattern matching (dates, numbers, abbreviations)",
+    "Expert 2 handles quotation marks (A15/A16/A19 confusion zone) and Korean-specific rules",
+    "Expert 3 handles diverse grammar rules including verb agreement and word choice",
+    "Each expert receives the full body text and only checks their assigned rules",
+    "Results are merged before correction stage"
+  ]
+}

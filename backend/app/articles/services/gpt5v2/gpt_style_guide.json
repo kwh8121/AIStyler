@@ -1,0 +1,905 @@
+{
+  "metadata": {
+    "version": "1.1",
+    "created_date": "2025-10-19T09:10:15.475774",
+    "description": "Korea Times Style Guide for GPT-5 (Regex rules excluded, organized by thematic groups)",
+    "total_rules": 65,
+    "excluded_regex_rules": [
+      "H09",
+      "H10",
+      "H11",
+      "A13",
+      "A14",
+      "A25",
+      "A31",
+      "A34",
+      "A35",
+      "C09",
+      "C13",
+      "C15",
+      "C18",
+      "C24",
+      "C27",
+      "C29",
+      "C32"
+    ],
+    "rules_by_component": {
+      "headline": 8,
+      "caption": 24,
+      "body": 33
+    },
+    "last_updated": "2025-11-05T14:00:00.000000"
+  },
+  "rules": {
+    "H01": {
+      "rule_id": "H01",
+      "component": "headline",
+      "group": "Capitalization",
+      "description": "The first letter of the first word of the headline should be capitalized. The rest is treated as lowercase. This rule does not apply to abbreviations or acronyms. Acronyms must remain uppercase (e.g., IU, U.S.); proper nouns retain their standard capitalization mid‑headline (e.g., N. Korea, Kim).",
+      "examples": [
+        {
+          "incorrect": "korea to launch economic consultative bodies to brace for Trump 2.0",
+          "correct": "Korea to launch economic consultative bodies to brace for Trump 2.0"
+        },
+        {
+          "incorrect": "Kdi says monetary tightening largely helped slow inflation",
+          "correct": "KDI says monetary tightening largely helped slow inflation"
+        },
+        {
+          "incorrect": "Iu files complaints against 180 malicious commenters",
+          "correct": "IU files complaints against 180 malicious commenters"
+        },
+        {
+          "incorrect": "N. korea's Kim finalizes defense pact with Russia",
+          "correct": "N. Korea's Kim finalizes defense pact with Russia"
+        }
+      ]
+    },
+    "H02": {
+      "rule_id": "H02",
+      "component": "headline",
+      "group": "Quotation Mark Usage",
+      "description": "In headlines, quotations should use single quotation marks, not double quotation marks. This is a headline-specific rule that differs from body text conventions.",
+      "examples": [
+        {
+          "incorrect": "Singer Ailee to marry \"Single's Inferno\" participant Choi Si-hoon in April",
+          "correct": "Singer Ailee to marry 'Single's Inferno' participant Choi Si-hoon in April"
+        }
+      ]
+    },
+    "H03": {
+      "rule_id": "H03",
+      "component": "headline",
+      "group": "Verb Tense",
+      "description": "Use the infinitive form ('to') for future actions instead of future tense verbs like 'will.' This creates more concise and impactful headlines.",
+      "examples": [
+        {
+          "incorrect": "Company will unveil new product line",
+          "correct": "Company to unveil new product line"
+        }
+      ]
+    },
+    "H04": {
+      "rule_id": "H04",
+      "component": "headline",
+      "group": "Verb Tense",
+      "description": "Use present tense for ongoing or completed actions to create immediacy and engagement in headlines. This is different from body text where past tense may be appropriate.",
+      "examples": [
+        {
+          "incorrect": "Team claimed championship",
+          "correct": "Team claims championship"
+        }
+      ]
+    },
+    "H05": {
+      "rule_id": "H05",
+      "component": "headline",
+      "group": "Quotation Mark Usage",
+      "description": "Use single quotation marks in headlines for titles of songs, movies, books, and articles. This maintains consistency with H02 and distinguishes headlines from body text.",
+      "examples": [
+        {
+          "incorrect": "\"Frog\" to premiere on streaming platform",
+          "correct": "'Frog' to premiere on streaming platform"
+        }
+      ]
+    },
+    "H06": {
+      "rule_id": "H06",
+      "component": "headline",
+      "group": "Writing Principles",
+      "description": "Keep headlines short and impactful, omitting articles (a, an, the) unless necessary for clarity.",
+      "examples": [
+        {
+          "incorrect": "City announces a new public transport initiative",
+          "correct": "City announces new public transport initiative"
+        }
+      ]
+    },
+    "H07": {
+      "rule_id": "H07",
+      "component": "headline",
+      "group": "Writing Principles",
+      "description": "Use clear and specific language to convey the core message of the article.",
+      "examples": [
+        {
+          "incorrect": "University could host international science conference",
+          "correct": "University to host international science conference"
+        }
+      ]
+    },
+    "H08": {
+      "rule_id": "H08",
+      "component": "headline",
+      "group": "Writing Principles",
+      "description": "Put important word ahead of other words",
+      "examples": [
+        {
+          "incorrect": "Blue Dragon Film Awards criticized for Jung Woo-sung post",
+          "correct": "Jung Woo-sung post triggers backlash for Blue Dragon Film Awards"
+        }
+      ]
+    },
+    "C01": {
+      "rule_id": "C01",
+      "component": "caption",
+      "group": "Basic Principles",
+      "description": "Present Tense: Use present tense to describe what is happening in the photo. Description first, explanation later.",
+      "examples": [
+        {
+          "incorrect": "People enjoyed the art exhibition at the National Gallery in Seoul. The event highlighted contemporary artists from Korea.",
+          "correct": "People enjoy the art exhibition at the National Gallery in Seoul. The event, which began last week, highlights contemporary artists from Korea."
+        }
+      ]
+    },
+    "C02": {
+      "rule_id": "C02",
+      "component": "caption",
+      "group": "Person Description",
+      "description": "Mention the person's name first, followed by their location in the photo, and their role or title.",
+      "examples": [
+        {
+          "incorrect": "Kim Tae-hyung, a member of BTS, front row second from right, smiles at the camera during a press event.",
+          "correct": "K-pop boy band BTS member Kim Tae-hyung, front row second from right, smiles at the camera during a press event."
+        }
+      ]
+    },
+    "C03": {
+      "rule_id": "C03",
+      "component": "caption",
+      "group": "Person Description",
+      "description": "Capitalize titles when they appear before a person's name (e.g., 'Chairman Lee'), but use lowercase when the title appears after the name (e.g., 'Lee, chairman'). Position determines capitalization.",
+      "examples": [
+        {
+          "incorrect": "Samsung Electronics chairman Lee Jae-yong attends the meeting with global leaders.",
+          "correct": "Samsung Electronics Chairman Lee Jae-yong attends the meeting with global leaders."
+        }
+      ]
+    },
+    "C04": {
+      "rule_id": "C04",
+      "component": "caption",
+      "group": "Person Description",
+      "description": "Simplify Subjects: If three or more people are listed in the same clause, mention only the key person (or two) in the first sentence. In the second sentence, introduce the remaining participants using a natural news-caption pattern such as 'Also present were ...'; when positional labeling is relevant, use 'from left, ...'.",
+      "examples": [
+        {
+          "incorrect": "Prime Minister Han Duck-soo, Foreign Minister Cho Tae-yul, SK Chairman Chey Tae-won, and Industry Minister Ahn Duk-geun pose during an event in Seoul, Monday.",
+          "correct": "Prime Minister Han Duck-soo, center, poses with dignitaries during an event in Seoul, Monday. They are, from left, Foreign Minister Cho Tae-yul, SK Chairman Chey Tae-won, Han, and Industry Minister Ahn Duk-geun."
+        },
+        {
+          "incorrect": "Bank of Korea Governor Rhee Chang-yong, Finance Minister Choi Sang-mok, and Trade Minister Ahn Duk-geun deliver a keynote speech at an economic forum in Busan, Friday.",
+          "correct": "Bank of Korea Governor Rhee Chang-yong delivers a keynote speech at an economic forum in Busan, Friday. Also present were Finance Minister Choi Sang-mok and Trade Minister Ahn Duk-geun."
+        }
+      ]
+    },
+    "C05": {
+      "rule_id": "C05",
+      "component": "caption",
+      "group": "Person Description",
+      "description": "No Parentheses for Positioning: When describing a person's position in a photo, do not use parentheses.",
+      "examples": [
+        {
+          "incorrect": "Tom Cruise (left) poses with staff members at the premiere.",
+          "correct": "Tom Cruise, left, poses with staff members at the premiere."
+        }
+      ]
+    },
+    "C06": {
+      "rule_id": "C06",
+      "component": "caption",
+      "group": "Person Description",
+      "description": "\"From left\" Placement: Always place \"from left\" before the list of names.",
+      "examples": [
+        {
+          "incorrect": "RM, from left, j-hope, Jungkook, and Jimin pose at the event.",
+          "correct": "From left, RM, j-hope, Jungkook, and Jimin pose at the event."
+        }
+      ]
+    },
+    "C07": {
+      "rule_id": "C07",
+      "component": "caption",
+      "group": "Date Format",
+      "description": "KST-based seven-day rule for captions: If the referenced date is within the previous seven days, write 'last <weekday>'. If it is within the next seven days, write '<weekday>'. Otherwise, write 'Month Day[, Year]' and omit the weekday. If the year is not given, assume the article year.",
+      "examples": [
+        {
+          "incorrect": "The fire broke out, Nov. 3.",
+          "correct": "The fire broke out last Monday."
+        },
+        {
+          "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
+          "correct": "Protesters gather in front of the parliament in London, Oct. 21, 2025."
+        }
+      ]
+    },
+    "C08": {
+      "rule_id": "C08",
+      "component": "caption",
+      "group": "Person Description",
+      "description": "Korean President: Do not include their location in the photo. Foreign Leaders: Always indicate the location.",
+      "examples": [
+        {
+          "incorrect": "President Yoon Suk-yeol, center, greets U.S. President Joe Biden, right, during the bilateral talks in Seoul.",
+          "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden, right, during the bilateral talks in Seoul."
+        }
+      ]
+    },
+    "C10": {
+      "rule_id": "C10",
+      "component": "caption",
+      "group": "Basic Principles",
+      "description": "Do not use \"on\" before the day of the week or the date. Use comma in front of the day.",
+      "examples": [
+        {
+          "incorrect": "People enjoy performances during the festival in Seoul, on Thursday.",
+          "correct": "People enjoy performances during the festival in Seoul, Thursday."
+        }
+      ]
+    },
+    "C11": {
+      "rule_id": "C11",
+      "component": "caption",
+      "group": "Date Format",
+      "description": "For specific dates, use '... in Seoul, May 17, 2023' or '... in Seoul in this May 17, 2023 photo.' For month and year only, use '... in Seoul in May 2023' or '... in Seoul in this May 2023 photo.' Never use comma before month-year only.",
+      "examples": [
+        {
+          "incorrect": "Visitors walk through the exhibition hall in Seoul, May 2023.",
+          "correct": "Visitors walk through the exhibition hall in Seoul in May 2023."
+        }
+      ]
+    },
+    "C14": {
+      "rule_id": "C14",
+      "component": "caption",
+      "group": "Basic Principles",
+      "description": "Avoid Using \"Located\" or \"Held\": When mentioning the location of an event, avoid using redundant words like \"located\" or \"held.\"",
+      "examples": [
+        {
+          "incorrect": "The president delivers a speech during a ceremony held at Cheong Wa Dae.",
+          "correct": "The president delivers a speech during a ceremony at Cheong Wa Dae."
+        }
+      ]
+    },
+    "C16": {
+      "rule_id": "C16",
+      "component": "caption",
+      "group": "Source Attribution",
+      "description": "Source attribution (company provided): If a photo is directly provided by a company/organization, remove any 'in this photo provided by [Company Name]' (or similar) from the caption content and end the caption with 'Courtesy of [Company Name]'. Do NOT include any news‑agency or in‑house credit (this includes 'Korea Times file'). Never combine 'provided by ...' and 'Courtesy of ...'. If a valid 'Courtesy of [Company]' already appears at the end, do NOT add or duplicate it; only remove 'provided by ...' from the caption content. Ensure exactly one final credit phrase at the end of the caption. Decision hint: If the original caption does NOT end with a recognized news/wire agency credit (e.g., ‘Yonhap’, ‘AP’, ‘Reuters’, ‘AFP’, ‘Getty Images’, ‘EPA’, ‘Bloomberg’, ‘Korea Times’), prefer C16. Do not invent any agency credit.",
+      "examples": [
+        {
+          "incorrect": "A new electric vehicle model is displayed at a recent auto show in this photo provided by Hyundai Motor. Courtesy of Hyundai Motor",
+          "correct": "A new electric vehicle model is displayed at a recent auto show. Courtesy of Hyundai Motor"
+        },
+        {
+          "incorrect": "A new electric vehicle model is displayed at a recent auto show in this photo provided by Hyundai Motor. Yonhap",
+          "correct": "A new electric vehicle model is displayed at a recent auto show. Courtesy of Hyundai Motor"
+        }
+      ]
+    },
+    "C17": {
+      "rule_id": "C17",
+      "component": "caption",
+      "group": "Source Attribution",
+      "description": "Source attribution (news agency using company photo): When a news agency uses a company‑provided photo, include 'in this photo provided by [Company Name]' in the caption content, and end with the news‑agency credit (e.g., 'Yonhap'). Do NOT add 'Courtesy of ...' and do NOT add in‑house credits (e.g., 'Korea Times file'). Never combine 'provided by ...' and 'Courtesy of ...'. Decision hint: Apply C17 only if the original caption ends with a recognized news/wire agency credit (e.g., ‘Yonhap’, ‘AP’, ‘Reuters’, ‘AFP’, ‘Getty Images’, ‘EPA’, ‘Bloomberg’, ‘Korea Times’). Do not add ‘Courtesy of …’.",
+      "examples": [
+        {
+          "incorrect": "A new electric vehicle model is displayed at a recent auto show. Courtesy of Hyundai Motor.",
+          "correct": "A new electric vehicle model is displayed at a recent auto show in this photo provided by Hyundai Motor. Yonhap"
+        },
+        {
+          "correct": "A new electric vehicle model is displayed at a recent auto show in this photo provided by Samsung Electronics. Reuters",
+          "incorrect": "A new electric vehicle model is displayed at a recent auto show. Courtesy of Samsung Electronics."
+        }
+      ]
+    },
+    "C19": {
+      "rule_id": "C19",
+      "component": "caption",
+      "group": "Sentence Structure & Credit Normalization",
+      "description": "Credit placement and normalization: (1) Sentential captions (with a finite verb): end the sentence with a period, then add the credit as a separate token — either 'Courtesy of [Company].' or an in‑house/agency token (e.g., 'Korea Times file.'). Do not use '/' in sentential captions. (2) Non‑sentential captions (noun phrases): do not introduce a verb. Place exactly one final credit using ' / ' (e.g., ' / Courtesy of [Company]' or ' / Korea Times file'). (3) Never put a period immediately before '/': replace '. /' with ' / '. (4) Canonicalize in‑house token: 'Korea Times photo' → 'Korea Times file'; never split as 'Korea Times / File'. (5) Exactly one final credit: never duplicate or combine credits; if multiple credits appear, keep only the appropriate single credit. (6) Do not combine 'Courtesy of ...' with any news‑agency or in‑house credit (e.g., 'Korea Times file').",
+      "examples": [
+        {
+          "incorrect": "President Yoon Suk Yeol speaks at a research center of Samsung Electronics in Yongin, Gyeonggi Province, Monday / Courtesy of Samsung Electronics.",
+          "correct": "President Yoon Suk Yeol speaks at a research center of Samsung Electronics in Yongin, Gyeonggi Province, Monday. Courtesy of Samsung Electronics."
+        },
+        {
+          "incorrect": "A view of downtown Seoul is seen at night.",
+          "correct": "A view of downtown Seoul at night."
+        },
+        {
+          "incorrect": "A research center of Samsung Electronics. Courtesy of Samsung Electronics.",
+          "correct": "A research center of Samsung Electronics / Courtesy of Samsung Electronics"
+        },
+        {
+          "incorrect": "A research center of Samsung Electronics is seen. / Courtesy of Samsung Electronics",
+          "correct": "A research center of Samsung Electronics is seen / Courtesy of Samsung Electronics"
+        },
+        {
+          "incorrect": "A view of downtown Seoul during rush hour. Korea Times / File",
+          "correct": "A view of downtown Seoul during rush hour / Korea Times file"
+        },
+        {
+          "incorrect": "A view of downtown Seoul during rush hour / Korea Times file / Korea Times file.",
+          "correct": "A view of downtown Seoul during rush hour / Korea Times file"
+        },
+        {
+          "incorrect": "A new model is displayed at a showroom / Korea Times file. Courtesy of Hyundai Motor.",
+          "correct": "A new model is displayed at a showroom. Courtesy of Hyundai Motor."
+        }
+      ]
+    },
+    "C20": {
+      "rule_id": "C20",
+      "component": "caption",
+      "group": "Basic Principles",
+      "description": "No Country Name for Famous Capitals: For globally recognized capital cities like London or Paris, do not include the country name.",
+      "examples": [
+        {
+          "incorrect": "The Eiffel Tower is illuminated at night in Paris, France.",
+          "correct": "The Eiffel Tower is illuminated at night in Paris."
+        }
+      ]
+    },
+    "C21": {
+      "rule_id": "C21",
+      "component": "caption",
+      "group": "Number Notation",
+      "description": "Currency conversion: Convert only the first occurrence of 'won' to dollars in parentheses. For any later 'won' amounts, do not add a dollar conversion; if parentheses already appear, remove them and keep only the won amount. Apply to both '10,000 won' and '10,000won'.",
+      "examples": [
+        {
+          "incorrect": "The product costs 50,000 won.",
+          "correct": "The product costs 50,000 won ($38)."
+        },
+        {
+          "incorrect": "The product costs 50,000 won ($38). Additional cost 10,000won ($7.50).",
+          "correct": "The product costs 50,000 won ($38). Additional cost 10,000won."
+        }
+      ]
+    },
+    "C22": {
+      "rule_id": "C22",
+      "component": "caption",
+      "group": "Number Notation",
+      "description": "Do not abbreviate the months of March, April, May, June and July. Abbreviate the rest.",
+      "examples": [
+        {
+          "incorrect": "The meeting is scheduled for November 15, 2023.",
+          "correct": "The meeting is scheduled for Nov. 15, 2023."
+        },
+        {
+          "incorrect": "The meeting is scheduled for Apr. 15, 2023.",
+          "correct": "The meeting is scheduled for April 15, 2023."
+        }
+      ]
+    },
+    "C23": {
+      "rule_id": "C23",
+      "component": "caption",
+      "group": "Number Notation",
+      "description": "Use numerals for days and years.",
+      "examples": [
+        {
+          "correct": "The event will take place on Dec. 5, 2022."
+        }
+      ]
+    },
+    "C25": {
+      "rule_id": "C25",
+      "component": "caption",
+      "group": "Korean Names",
+      "description": "The Korean name is written with the family name first and the hyphen-connected name following it. (e.g. Jung Woo-sung, Moon Ga-bi).",
+      "examples": [
+        {
+          "incorrect": "GS E&C CEO Yoon-hong Huh speaks during a press conference at Xi Gallery in Seoul, Monday. Yonhap.",
+          "correct": "GS E&C CEO Huh Yoon-hong speaks during a press conference at Xi Gallery in Seoul, Monday. Yonhap"
+        }
+      ]
+    },
+    "C26": {
+      "rule_id": "C26",
+      "component": "caption",
+      "group": "Basic Principles",
+      "description": "Put all movie and song titles in double quotations in text.",
+      "examples": [
+        {
+          "incorrect": "Singer Ailee has announced her upcoming wedding to Choi Si-hoon, known from Netflix's Single's Inferno.",
+          "correct": "Singer Ailee has announced her upcoming wedding to Choi Si-hoon, known from Netflix's \"Single's Inferno.\""
+        }
+      ]
+    },
+    "C30": {
+      "rule_id": "C30",
+      "component": "caption",
+      "group": "Number Notation",
+      "description": "Numbers from 1 to 9 should be written out as words. Numbers 10 and above should be written as Arabic numerals. When numbers appear directly before a unit of measure, use Arabic numerals, regardless of the number's value.",
+      "examples": [
+        {
+          "incorrect": "There are 5 apples in the basket.",
+          "correct": "There are five apples in the basket."
+        },
+        {
+          "correct": "We expect a 5 percent increase in sales this year."
+        }
+      ]
+    },
+    "C31": {
+      "rule_id": "C31",
+      "component": "caption",
+      "group": "Korean Places",
+      "description": "Use \"in\" for areas like Yeouido, as they are considered specific locations rather than surfaces. Avoid using \"on\".",
+      "examples": [
+        {
+          "incorrect": "The National Assembly building is located on Yeouido, Seoul's financial district.",
+          "correct": "The National Assembly building is located in Yeouido, Seoul's financial district."
+        }
+      ]
+    },
+    "C33": {
+      "rule_id": "C33",
+      "component": "caption",
+      "group": "Basic Principles",
+      "description": "Do not begin captions with phrases like 'This photo shows,' 'This Jan. 3 photo shows,' or 'Seen above is.' Avoid mentioning the word 'photo' unless needed for clarity, as captions inherently describe images.",
+      "examples": [
+        {
+          "incorrect": "This Jan. 3 photo shows North Korean leader Kim Jong-un visiting a farm in Pyongyang.",
+          "correct": "North Korean leader Kim Jong-un visits a farm in Pyongyang, Jan. 3."
+        },
+        {
+          "incorrect": "Seen above is a new apartment complex under construction in Seoul.",
+          "correct": "A new apartment complex is under construction in Seoul."
+        }
+      ]
+    },
+    "A02": {
+      "rule_id": "A02",
+      "component": "body",
+      "group": "Title Capitalization",
+      "description": "Capitalization of Titles: When a title appears before a person's name, it should be capitalized. When the title appears after the name, it should be lowercase.",
+      "examples": [
+        {
+          "incorrect": "Samsung Electronics chairman Lee Jae-yong attends the meeting with global leaders.",
+          "correct": "Samsung Electronics Chairman Lee Jae-yong attends the meeting with global leaders."
+        }
+      ]
+    },
+    "A04": {
+      "rule_id": "A04",
+      "component": "body",
+      "group": "Date Format",
+      "description": "KST-based ±7-day rule (body): past ≤7 days → 'last <weekday>'; next ≤7 days → '<weekday>'; otherwise use 'Month Day[, Year]' and omit the weekday. Assume the article year if the year is omitted. Use local rebase when a relative cue appears with an absolute date.",
+      "examples": [
+        {
+          "incorrect": "The fire broke out, Nov. 3.",
+          "correct": "The fire broke out last Monday."
+        },
+        {
+          "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
+          "correct": "Protesters gather in front of the parliament in London, Oct. 21, 2025."
+        }
+      ]
+    },
+    "A05": {
+      "rule_id": "A05",
+      "component": "body",
+      "group": "Date Format",
+      "description": "Same Month, Date Range: When indicating a range of dates within the same month, only include the day. Different Months, Full Range: Include both the month and day.",
+      "examples": [
+        {
+          "incorrect": "The festival will run from April 28 to April 30 in Seoul.",
+          "correct": "The festival will run from April 28 to 30 in Seoul."
+        }
+      ]
+    },
+    "A06": {
+      "rule_id": "A06",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Avoid redundant verbs (\"located,\" \"held\") and strictly use prepositions \"at\" or \"in.\"",
+      "examples": [
+        {
+          "incorrect": "The president delivers a speech during a ceremony held at Cheong Wa Dae.",
+          "correct": "The president delivers a speech at Cheong Wa Dae."
+        }
+      ]
+    },
+    "A07": {
+      "rule_id": "A07",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Currency conversion: Convert only the first occurrence of 'won' to dollars in parentheses. For any later 'won' amounts in the article/body, do not add a dollar conversion; if parentheses already appear, remove them and keep only the won amount. Apply to both '10,000 won' and '10,000won'.",
+      "examples": [
+        {
+          "incorrect": "The product costs 50,000 won.",
+          "correct": "The product costs 50,000 won ($38)."
+        },
+        {
+          "incorrect": "The product costs 50,000 won ($38). Additional cost 10,000won ($7.50).",
+          "correct": "The product costs 50,000 won ($38). Additional cost 10,000won."
+        }
+      ]
+    },
+    "A08": {
+      "rule_id": "A08",
+      "component": "body",
+      "group": "Date Format",
+      "description": "Explicitly state that dates must always use numerals (1, 2, 3), never spelled out.",
+      "examples": [
+        {
+          "incorrect": "The event is scheduled for December fifth, two thousand twenty-two.",
+          "correct": "The event is scheduled for Dec. 5, 2022."
+        }
+      ]
+    },
+    "A09": {
+      "rule_id": "A09",
+      "component": "body",
+      "group": "Korean-Related Notation",
+      "description": "The Korean name is written with the family name first and the hyphen-connected given name following it. (e.g. Jung Woo-sung, Moon Ga-bi).",
+      "examples": [
+        {
+          "incorrect": "GS E&C CEO Yoon-hong Huh speaks during a press conference.",
+          "correct": "GS E&C CEO Huh Yoon-hong speaks during a press conference."
+        }
+      ]
+    },
+    "A10": {
+      "rule_id": "A10",
+      "component": "body",
+      "group": "Date Format",
+      "description": "Abbreviate months only if they contain dates (except March, April, May, June, July). Fully spell out if mentioning only month and year.",
+      "examples": [
+        {
+          "incorrect": "The meeting is scheduled for November 15, 2023.",
+          "correct": "The meeting is scheduled for Nov. 15, 2023."
+        },
+        {
+          "incorrect": "The project starts in Sept. 2023.",
+          "correct": "The project starts in September 2023."
+        }
+      ]
+    },
+    "A11": {
+      "rule_id": "A11",
+      "component": "body",
+      "group": "Abbreviations",
+      "description": "Acronyms: When introducing an acronym, spell out the full term on the first reference, followed by the acronym in parentheses.",
+      "examples": [
+        {
+          "incorrect": "NASA launched a new mission.",
+          "correct": "National Aeronautics and Space Administration (NASA) launched a new mission. NASA will explore distant planets."
+        }
+      ]
+    },
+    "A12": {
+      "rule_id": "A12",
+      "component": "body",
+      "group": "Abbreviations",
+      "description": "Scientific Abbreviations: Scientific writing allows the use of certain abbreviations, but for clarity, the spelling can be specified in the first reference.",
+      "examples": [
+        {
+          "correct": "DNA (deoxyribonucleic acid) is a complex molecule."
+        }
+      ]
+    },
+    "A15": {
+      "rule_id": "A15",
+      "component": "body",
+      "group": "Quotation Marks",
+      "description": "Punctuation Within Quotations: In AP Style, punctuation marks such as commas and periods are placed inside the quotation marks.",
+      "examples": [
+        {
+          "incorrect": "\"I'll be there at 9 a.m\", she said.",
+          "correct": "\"I'll be there at 9 a.m.,\" she said."
+        }
+      ]
+    },
+    "A16": {
+      "rule_id": "A16",
+      "component": "body",
+      "group": "Quotation Marks",
+      "description": "Quoting Full Sentences: When quoting a complete sentence, the ending punctuation mark is placed inside the quotation marks.",
+      "examples": [
+        {
+          "incorrect": "He exclaimed, \"What a beautiful sunset\"!",
+          "correct": "He exclaimed, \"What a beautiful sunset!\""
+        }
+      ]
+    },
+    "A17": {
+      "rule_id": "A17",
+      "component": "body",
+      "group": "Quotation Marks",
+      "description": "Single Quotation Marks: Single quotation marks are used within double quotation marks when quoting material inside another quote.",
+      "examples": [
+        {
+          "incorrect": "He said, \"She told me, \\\"I'll be there by 7 p.m.\\\"\"",
+          "correct": "He said, \"She told me, 'I'll be there by 7 p.m.'\""
+        }
+      ]
+    },
+    "A18": {
+      "rule_id": "A18",
+      "component": "body",
+      "group": "Title Capitalization",
+      "description": "Capitalizing Titles and Job Roles: Capitalize job titles only if they directly precede the person's name.",
+      "examples": [
+        {
+          "incorrect": "The Vice President will address the audience. , Despite U.S. President Donald Trump’s tariff-driven pressure.",
+          "correct": "The vice president will address the audience. , Despite U.S. president Donald Trump’s tariff-driven pressure."
+        }
+      ]
+    },
+    "A19": {
+      "rule_id": "A19",
+      "component": "body",
+      "group": "Quotation Marks",
+      "description": "Quotations and Attribution: Use double quotation marks for direct quotes. Place commas and periods inside the quotation marks.",
+      "examples": [
+        {
+          "incorrect": "\"The journey of a thousand miles begins with a single step\", Lao Tzu said.",
+          "correct": "\"The journey of a thousand miles begins with a single step,\" Lao Tzu said."
+        }
+      ]
+    },
+    "A20": {
+      "rule_id": "A20",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Punctuation and Grammar: Use the serial comma in lists of items.",
+      "examples": [
+        {
+          "correct": "She enjoys hiking, reading and painting."
+        }
+      ]
+    },
+    "A21": {
+      "rule_id": "A21",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Common Errors to Avoid: Confusing \"its\" (possessive) with \"it's\" (contraction of \"it is\").",
+      "examples": [
+        {
+          "incorrect": "The dog wagged it's tail because its excited.",
+          "correct": "The dog wagged its tail because it's excited."
+        }
+      ]
+    },
+    "A22": {
+      "rule_id": "A22",
+      "component": "body",
+      "group": "Quotation Marks",
+      "description": "Put all movie and song titles in double quotations in text.",
+      "examples": [
+        {
+          "incorrect": "Singer Ailee has announced her upcoming wedding to Choi Si-hoon, known from Netflix's Single's Inferno.",
+          "correct": "Singer Ailee has announced her upcoming wedding to Choi Si-hoon, known from Netflix's \"Single's Inferno.\""
+        }
+      ]
+    },
+    "A23": {
+      "rule_id": "A23",
+      "component": "body",
+      "group": "Date Format",
+      "description": "Explicitly instruct that if the event or action occurred within the current calendar year, omit the year.",
+      "examples": [
+        {
+          "incorrect": "BTS released their album Proof in 2024.",
+          "correct": "BTS released their album Proof in June."
+        }
+      ]
+    },
+    "A24": {
+      "rule_id": "A24",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "If state, mention, or remark is used in a sentence, please change it to say. Please change the past tense to said.",
+      "examples": [
+        {
+          "incorrect": "The manager states the report is due tomorrow.",
+          "correct": "The manager says the report is due tomorrow."
+        }
+      ]
+    },
+    "A26": {
+      "rule_id": "A26",
+      "component": "body",
+      "group": "Korean-Related Notation",
+      "description": "For cultural properties, write 'Gyeongbokgung/Changdeokgung/Deoksugung/…' as 'Gyeongbok Palace/Changdeok Palace/Deoksu Palace/…'. Do not keep 'gung' when 'Palace' is present. Rewrite both 'Gyeongbokgung' and 'Gyeongbokgung Palace' to 'Gyeongbok Palace' (and likewise for other palaces).",
+      "examples": [
+        {
+          "incorrect": "Except for the restricted access to the Secret Garden in Gyeongbokgung Palace, all sites are open for free tours.",
+          "correct": "Except for the restricted access to the Secret Garden in Gyeongbok Palace, all sites are open for free tours."
+        },
+        {
+          "incorrect": "Except for the restricted access to the Secret Garden in Changdeokgung, all sites can be toured for free.",
+          "correct": "Except for the restricted access to the Secret Garden in Changdeok Palace, all sites can be toured for free."
+        }
+      ]
+    },
+    "C28": {
+      "rule_id": "C28",
+      "component": "caption",
+      "group": "Korean-Related Notation",
+      "description": "For captions, write 'Gyeongbokgung/Changdeokgung/Deoksugung/Changgyeonggung/Gyeonghuigung' as 'Gyeongbok/Changdeok/Deoksu/Changgyeong/Gyeonghui Palace'. Do not keep 'gung' when 'Palace' is present. Rewrite both '<…>gung' and '<…>gung Palace' to '<Base> Palace'.",
+      "examples": [
+        {
+          "incorrect": "Gyeongbokgung Palace feels like Gyeongbokgung Palace.",
+          "correct": "Gyeongbok Palace feels like Gyeongbok Palace."
+        },
+        {
+          "incorrect": "Tourists visit Changdeokgung.",
+          "correct": "Tourists visit Changdeok Palace."
+        }
+      ]
+    },
+    "A27": {
+      "rule_id": "A27",
+      "component": "body",
+      "group": "Korean-Related Notation",
+      "description": "The correct format for referring to mountains is Mount [Name]. Avoid abbreviations like Mt. or alternative formats like [Name] Mountain.",
+      "examples": [
+        {
+          "incorrect": "Tourists often visit Mt. Halla, a prominent feature of Jeju Island.",
+          "correct": "Tourists often visit Mount Halla, a prominent feature of Jeju Island."
+        }
+      ]
+    },
+    "A28": {
+      "rule_id": "A28",
+      "component": "body",
+      "group": "Number Notation",
+      "description": "Spell out numbers one to nine, except when directly preceding units (percent, million, degrees, etc.). Always use numerals from 10 upwards. The unit exception is critical to remember.",
+      "examples": [
+        {
+          "incorrect": "There are 5 apples.",
+          "correct": "There are five apples."
+        },
+        {
+          "correct": "We expect a 5 percent increase."
+        }
+      ]
+    },
+    "A29": {
+      "rule_id": "A29",
+      "component": "body",
+      "group": "Number Notation",
+      "description": "Clearly instruct that units of measurement (centimeters, kilometers, degrees Celsius) must always be fully written out, never abbreviated.",
+      "examples": [
+        {
+          "incorrect": "The snow reached 5 cm.",
+          "correct": "The snow reached 5 centimeters."
+        }
+      ]
+    },
+    "A30": {
+      "rule_id": "A30",
+      "component": "body",
+      "group": "Korean-Related Notation",
+      "description": "Use \"in\" for areas like Yeouido, as they are considered specific locations rather than surfaces. Avoid using \"on\".",
+      "examples": [
+        {
+          "incorrect": "The National Assembly building is located on Yeouido, Seoul's financial district.",
+          "correct": "The National Assembly building is located in Yeouido, Seoul's financial district."
+        }
+      ]
+    },
+    "A32": {
+      "rule_id": "A32",
+      "component": "body",
+      "group": "Verb Agreement",
+      "description": "Always use plural verbs when referring to sports teams, regardless of whether the team's name appears in plural or singular form (e.g., 'The Miami Heat are...').",
+      "examples": [
+        {
+          "incorrect": "The Miami Heat is playing exceptionally well this season.",
+          "correct": "The Miami Heat are playing exceptionally well this season."
+        }
+      ]
+    },
+    "A33": {
+      "rule_id": "A33",
+      "component": "body",
+      "group": "Verb Agreement",
+      "description": "Use singular verbs when referring to national teams, as the team represents a single entity (e.g., 'Korea defeats...'). This is opposite to A32 for sports teams.",
+      "examples": [
+        {
+          "incorrect": "Korea defeat Thailand in the World Cup qualifier.",
+          "correct": "Korea defeats Thailand in the World Cup qualifier."
+        }
+      ]
+    },
+    "A36": {
+      "rule_id": "A36",
+      "component": "body",
+      "group": "Word Choice",
+      "description": "Use toward, forward, amid, among, middle instead of towards, forwards, amidst, amongst, midst.",
+      "examples": [
+        {
+          "incorrect": "The country is moving towards a greener economy.",
+          "correct": "The country is moving toward a greener economy."
+        }
+      ]
+    },
+    "A37": {
+      "rule_id": "A37",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Use hyphens before and after in compound phrases like prosecutor-turned-president.",
+      "examples": [
+        {
+          "incorrect": "The prosecutor turned president addressed the nation.",
+          "correct": "The prosecutor-turned-president addressed the nation."
+        }
+      ]
+    },
+    "A38": {
+      "rule_id": "A38",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Use apostrophe after the full possessive phrase, not after the abbreviation.",
+      "examples": [
+        {
+          "incorrect": "The International Monetary Fund (IMF)'s forecast was released Monday.",
+          "correct": "The International Monetary Fund's (IMF) forecast was released Monday."
+        }
+      ]
+    },
+    "A39": {
+      "rule_id": "A39",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Clearly indicate that the preferred structure is \"[Name] said,\" except when a long explanatory clause follows.",
+      "examples": [
+        {
+          "incorrect": "\"I'll appeal,\" said Trump.",
+          "correct": "\"I'll appeal,\" Trump said."
+        },
+        {
+          "correct": "\"I'll appeal,\" said Trump, who recently won Iowa."
+        }
+      ]
+    },
+    "A41": {
+      "rule_id": "A41",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Clearly indicate that names \"Government Complex Seoul\" and \"Government Complex Sejong\" must not include the preposition \"in.\"",
+      "examples": [
+        {
+          "incorrect": "The briefing was at Government Complex in Seoul.",
+          "correct": "The briefing was at Government Complex Seoul."
+        }
+      ]
+    },
+    "A42": {
+      "rule_id": "A42",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Clearly instruct to avoid repeating titles like \"Chairman Lee\" in subsequent references; instead use \"the chairman\" or the surname alone.",
+      "examples": [
+        {
+          "incorrect": "DPK Chairman Lee Sung-hee spoke. Later, Chairman Lee added...",
+          "correct": "DPK Chairman Lee Sung-hee spoke. Later, the chairman added..."
+        }
+      ]
+    }
+  }
+}
