@@ -1,0 +1,17 @@
+test_Inference/checkpoint_2c_466/
+test_Inference/correction_checkpoint_3200/
+test_Inference/detection_checkpoint_3300/
+*.pt
+*.pth
+*.bin
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.log
+bulk_augmentation_results_*.json
+detection_dataset/
+correction_dataset/
+detection_lora_*/
+correction_lora_*/
