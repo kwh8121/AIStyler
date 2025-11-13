@@ -317,6 +317,35 @@ class RuleBasedCorrector:
         """
         corrections = []
 
+        # --- 안전한 날짜 전처리 (문장 분할 전에 수행) ---
+        # 예: "Nov. 12. 2025." → "Nov. 12, 2025." 로 정규화하여 잘못된 문장 분할을 방지
+        try:
+            import re as _re
+            month_token = r"(?:Jan\.?|January|Feb\.?|February|Mar\.?|March|Apr\.?|April|May|Jun\.?|June|Jul\.?|July|Aug\.?|August|Sep\.?|Sept\.?|September|Oct\.?|October|Nov\.?|November|Dec\.?|December)"
+
+            # Case 1: Month Day . Year . → Month Day, Year.
+            article_text = _re.sub(
+                rf"({month_token})\s(\d{{1,2}})\s*\.\s*(\d{{4}})\s*\.",
+                r"\1 \2, \3.",
+                article_text,
+            )
+
+            # Case 2: Month Day Year . → Month Day, Year.
+            article_text = _re.sub(
+                rf"({month_token})\s(\d{{1,2}})\s*(\d{{4}})\s*\.",
+                r"\1 \2, \3.",
+                article_text,
+            )
+
+            # Case 3: Month Day . Year (문장 끝) → Month Day, Year
+            article_text = _re.sub(
+                rf"({month_token})\s(\d{{1,2}})\s*\.\s*(\d{{4}})\s*$",
+                r"\1 \2, \3",
+                article_text,
+            )
+        except Exception:
+            pass
+
         # Parse article_date if provided
         article_datetime = None
         if article_date:

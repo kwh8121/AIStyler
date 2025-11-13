@@ -13,6 +13,7 @@ import re
 import asyncio
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from openai import OpenAI, AsyncOpenAI
 import nltk
@@ -83,16 +84,24 @@ class AIStylerGPT5Sentence:
             return json.load(f)
 
     def _filter_ai_rules(self) -> Dict:
-        """AI가 처리할 규칙만 필터링"""
-        regex_rules = {
-            'H09', 'H10', 'H11',
-            'A13', 'A14', 'A25', 'A31', 'A34', 'A35',
-            'C09', 'C13', 'C15', 'C18', 'C24', 'C27', 'C29', 'C32'
-        }
+        """AI가 처리할 규칙만 필터링
 
-        ai_rules = {}
-        for rule_id, rule_data in self.style_guides['rules'].items():
-            if rule_id not in regex_rules:
+        - 기본: JSON metadata의 excluded_regex_rules를 제외
+        - 토글: GPT5_V2_INCLUDE_ALL_HEADLINE_RULES=true이면 헤드라인(H*)는 제외 목록 무시
+        """
+        import os as _os
+        meta = self.style_guides.get('metadata', {}) if isinstance(self.style_guides, dict) else {}
+        excluded = set(meta.get('excluded_regex_rules', []) or [])
+
+        # 운영/QA 토글: 헤드라인 전수 검출을 강제하고 싶을 때 사용
+        include_all_headline = str(_os.getenv('GPT5_V2_INCLUDE_ALL_HEADLINE_RULES', 'false')).strip().lower() in ('1', 'true', 'yes', 'y')
+
+        ai_rules: Dict = {}
+        for rule_id, rule_data in (self.style_guides.get('rules', {}) or {}).items():
+            if include_all_headline and isinstance(rule_id, str) and rule_id.startswith('H'):
+                ai_rules[rule_id] = rule_data
+                continue
+            if rule_id not in excluded:
                 ai_rules[rule_id] = rule_data
 
         return ai_rules
@@ -152,7 +161,7 @@ class AIStylerGPT5Sentence:
 
         # Build ±7 day compact table
         days: List[str] = []
-        for offset in range(-7, 8):  # inclusive
+        for offset in range(-6, 7):  # inclusive
             d = base + timedelta(days=offset)
             tag = f"{d.month:02d}-{d.day:02d} ({dows[d.weekday()]})"
             if offset == 0:
@@ -161,7 +170,7 @@ class AIStylerGPT5Sentence:
 
         return "\n".join([
             f"Article Date (KST): {base.isoformat()} ({dow})",
-            "Date context (±7, KST): " + ", ".join(days)
+            "Date context (within 7 days, KST): " + ", ".join(days)
         ])
 
     def _infer_local_reference_date(self, sentences: List[str], article_date: Optional[str] = None) -> Optional[str]:
@@ -687,6 +696,7 @@ class AIStylerGPT5Sentence:
         if self.use_compressed_prompt:
             instructions = self._build_detection_instructions_for_component_compressed(component_type, component_rules)
         else:
+            # instructions = self.build_optimized_detection_prompt(component_type, component_rules)
             instructions = self._build_detection_instructions_for_component(component_type, component_rules)
         input_content = self._build_input_content_for_component(component_type, sentences, article_date)
 
@@ -798,12 +808,22 @@ class AIStylerGPT5Sentence:
 
         # 컴포넌트별 이름 매핑 및 특별 강조사항
         component_display_names = {
-            'title': ('HEADLINE', 'H01-H08', 'Title'),
-            'body': ('BODY', 'A01-A42', 'Body'),
-            'caption': ('CAPTION', 'C01-C33', 'Caption')
+            'title': ('HEADLINE', 'H', 'Title'),
+            'body': ('BODY', 'A', 'Body'),
+            'caption': ('CAPTION', 'C', 'Caption')
         }
 
-        display_name, rule_range, sentence_type = component_display_names[component_type]
+        display_name, rule_prefix, sentence_type = component_display_names[component_type]
+
+        # 동적으로 규칙 범위(H01-H13 등) 계산
+        try:
+            nums = sorted(int(k[1:]) for k in component_rules.keys() if isinstance(k, str) and k.startswith(rule_prefix))
+            if nums:
+                rule_range = f"{rule_prefix}{nums[0]:02d}-{rule_prefix}{nums[-1]:02d}"
+            else:
+                rule_range = f"{rule_prefix}**"
+        except Exception:
+            rule_range = f"{rule_prefix}**"
 
         # 컴포넌트별 특별 강조
         special_focus = ""
@@ -826,9 +846,10 @@ class AIStylerGPT5Sentence:
             rules_text.append(rule_text)
 
         rules_section = '\n\n'.join(rules_text)
-
         extra = getattr(self, '_extra_instructions', None)
-        instructions = f"""You are an expert copy editor for the Korea Times.
+        instructions = f"""
+You are an expert copy editor for The Korea Times, specializing in photo captions.
+Your task is to meticulously review the provided caption sentence(s) and identify all violations based on the official Caption Style Guide below. You must be thorough, accurate, and use the provided examples to guide your judgment.        
 {special_focus}
 
 TASK: DETECT {display_name} style guide violations - BE THOROUGH AND ACCURATE.
@@ -864,8 +885,87 @@ DETECTION INSTRUCTIONS:
 {('8. Additionally, follow this instruction strictly: ' + extra) if extra else ''}
 
 Note: Only check against {display_name} rules ({rule_range}). Do not apply rules from other sections."""
-
         return instructions
+    
+    def build_optimized_detection_prompt(
+        self,
+        component_type: str,
+        component_rules: Dict[str, Any]
+    ) -> str:
+        """
+        구조화, 명료화, 간결함을 통해 최적화된 Detection 프롬프트를 생성합니다.
+        """
+        component_map = {
+            'title': ('HEADLINE', 'H', 'Title'),
+            'body': ('BODY', 'A', 'Body'),
+            'caption': ('CAPTION', 'C', 'Caption')
+        }
+        display_name, rule_prefix, _ = component_map[component_type]
+
+        # --- 1. 규칙을 의미론적 그룹으로 묶어 AI의 컨텍스트 이해를 돕습니다 ---
+        grouped_rules: Dict[str, list] = {}
+        for rule_id, rule_data in component_rules.items():
+            # JSON 데이터에 'group'이 없다면 'General Principles'로 기본값 설정
+            group = rule_data.get('group', 'General Principles')
+            if group not in grouped_rules:
+                grouped_rules[group] = []
+            # 나중에 사용하기 편하도록 튜플 형태로 저장
+            grouped_rules[group].append((rule_id, rule_data))
+
+        # --- 2. 그룹화된 규칙을 바탕으로 가독성 높은 텍스트 섹션을 만듭니다 ---
+        rule_sections = []
+        # 그룹 이름을 기준으로 정렬하여 항상 일관된 순서의 프롬프트 생성
+        for i, (group_name, rules_in_group) in enumerate(sorted(grouped_rules.items()), 1):
+            rule_texts = []
+            for rule_id, rule_data in sorted(rules_in_group): # 규칙 ID 순으로 정렬
+                description = rule_data.get('description', 'N/A')
+                
+                # 명시적으로 Category를 제공하여 AI가 violation_type을 쉽게 찾도록 함
+                rule_text = f"  *   **{rule_id}: {description}**\n      *   **Category:** `{group_name}`"
+
+                # 예시는 항상 제공하는 것이 안정적임 (특히 복잡한 규칙의 경우)
+                if rule_data.get('examples'):
+                    example = rule_data['examples'][0]
+                    incorrect_ex = example.get('incorrect', '')
+                    correct_ex = example.get('correct', '')
+                    rule_text += f"\n      *   **Incorrect:** `{incorrect_ex}`\n      *   **Correct:** `{correct_ex}`"
+                rule_texts.append(rule_text)
+            
+            section_content = f"### {i}. {group_name}\n\n" + "\n\n".join(rule_texts)
+            rule_sections.append(section_content)
+
+        rules_section_str = "\n\n---\n\n".join(rule_sections)
+        
+        # --- 3. 중복을 제거하고 핵심만 담은 지시사항을 생성합니다 ---
+        # `TASK`, `PRINCIPLES`, `INSTRUCTIONS`를 하나로 통합
+        instructions = f"""You are an expert copy editor for The Korea Times, specializing in {display_name.lower()}s.
+    Your mission is to meticulously review the provided text and identify all violations based on the official Style Guide below.
+
+    ---
+    ### **{display_name} Style Guide**
+    {rules_section_str}
+    ---
+
+    ### **Instructions & Output Format**
+
+    1.  **Systematic Review:** Carefully check each sentence against all relevant rules in the guide.
+    2.  **Confident Detection:** Only report violations you are certain about, using the examples as a reference.
+    3.  **JSON Output:** For each violation, provide a JSON object with the following structure. If a sentence has multiple violations, create a separate object for each.
+
+        ```json
+        {{
+        "sentence_id": "C1",
+        "rule_id": "C05",
+        "component": "{component_type}",
+        "rule_description": "Do not use parentheses for positioning.",
+        "violation_type": "Person Description"
+        }}
+        ```
+    4.  **`violation_type` Field:** For the `violation_type`, you MUST use the exact string from the `Category` field of the violated rule.
+    5.  **No Violations:** If you find no violations, return an empty array `[]`.
+    """
+        return instructions
+
 
     def _build_detection_instructions_for_component_compressed(
         self,
@@ -876,12 +976,22 @@ Note: Only check against {display_name} rules ({rule_range}). Do not apply rules
 
         # 컴포넌트별 이름 매핑
         component_display_names = {
-            'title': ('HEADLINE', 'H01-H08', 'Title'),
-            'body': ('BODY', 'A01-A42', 'Body'),
-            'caption': ('CAPTION', 'C01-C33', 'Caption')
+            'title': ('HEADLINE', 'H', 'Title'),
+            'body': ('BODY', 'A', 'Body'),
+            'caption': ('CAPTION', 'C', 'Caption')
         }
 
-        display_name, rule_range, sentence_type = component_display_names[component_type]
+        display_name, rule_prefix, sentence_type = component_display_names[component_type]
+
+        # 동적으로 규칙 범위 계산
+        try:
+            nums = sorted(int(k[1:]) for k in component_rules.keys() if isinstance(k, str) and k.startswith(rule_prefix))
+            if nums:
+                rule_range = f"{rule_prefix}{nums[0]:02d}-{rule_prefix}{nums[-1]:02d}"
+            else:
+                rule_range = f"{rule_prefix}**"
+        except Exception:
+            rule_range = f"{rule_prefix}**"
 
         # 규칙을 복잡도별로 분류 (예제가 필요한 것 vs 필요없는 것)
         # 간단한 규칙: 명확한 패턴 (capitalization, number format 등)
@@ -953,21 +1063,33 @@ TASK:
         # 캡션은 로컬 기준일 + 기사 기준일(요일 포함)을 간단히 주입
         if component_type == 'caption':
             local_ref = self._infer_local_reference_date(sentences, article_date)
-            if local_ref and article_date:
-                # Article Date 첫 줄만 발췌 (YYYY-MM-DD (DOW))
+            ctx_block = None
+            if article_date:
                 try:
-                    first = (self._format_kst_date_context(article_date) or '').splitlines()[0]
+                    ctx_block = self._format_kst_date_context(article_date)
                 except Exception:
-                    first = f"Article Date (KST): {article_date}"
-                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{first}"
+                    ctx_block = f"Article Date (KST): {article_date}"
+            if local_ref and ctx_block:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
             elif local_ref:
                 date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
-            elif article_date:
+            elif ctx_block:
+                date_context = f"\n\n{ctx_block}"
+        elif component_type == 'body':
+            # 본문에도 동일한 날짜 컨텍스트 제공 (필요 시 상대표현 정합성 개선)
+            local_ref = self._infer_local_reference_date(sentences, article_date)
+            ctx_block = None
+            if article_date:
                 try:
-                    first = (self._format_kst_date_context(article_date) or '').splitlines()[0]
+                    ctx_block = self._format_kst_date_context(article_date)
                 except Exception:
-                    first = f"Article Date (KST): {article_date}"
-                date_context = f"\n\n{first}"
+                    ctx_block = f"Article Date (KST): {article_date}"
+            if local_ref and ctx_block:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
+            elif local_ref:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
+            elif ctx_block:
+                date_context = f"\n\n{ctx_block}"
         else:
             if article_date:
                 ctx = self._format_kst_date_context(article_date)
@@ -1178,7 +1300,7 @@ TASK:
 
         tools = self._build_correction_tools()
         input_content = self._build_correction_input(sentences_to_correct, component_detections, article_date)
-        instructions = self._build_correction_instructions()
+        instructions = self._build_correction_instructions(component_type)
 
         try:
             # Async API 호출 - GPT-5 minimal reasoning 사용 (Correction은 단순 작업)
@@ -1400,7 +1522,7 @@ Note: Title sentences use H rules, Body sentences use A rules, Caption sentences
 
         return instructions
 
-    def _build_correction_instructions(self) -> str:
+    def _build_correction_instructions(self, component_type: str) -> str:
         """Correction용 지시사항 (GPT-5-mini)"""
         extra = getattr(self, '_extra_instructions', None)
 
@@ -1432,17 +1554,20 @@ IMPORTANT:
         if extra:
             instructions += f"\n\nADDITIONAL INSTRUCTION (apply strictly): {extra}"
 
-        # 날짜 규칙 요약을 명시적으로 포함 (A04/C12 적용 가이드)
-        instructions += """
+        # 캡션 전용 지침만 캡션에 포함
+        if component_type == 'caption':
+            instructions += """
 
 DATE NORMALIZATION (KST):
-- If the referenced date is within the past 7 days, replace with 'last <weekday>' (e.g., 'last Monday').
-- If within the next 7 days, replace with '<weekday>'.
-- Otherwise, use 'Month Day[, Year]' and omit the weekday (e.g., 'Oct. 21, 2025').
-- If the year is omitted, assume the article year.
-- When a relative cue (e.g., 'tomorrow', 'yesterday') co‑occurs with an absolute date, align the cue with that date (local rebase)."""
+- Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
+- If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
+- If it is listed on the future side, rewrite as '<weekday>'.
+- If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
+- If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
+- When ambiguous, do not convert; keep the absolute date.
+"""
 
-        instructions += """
+            instructions += """
 
 CREDIT NORMALIZATION (CAPTIONS):
 - Exactly one final credit. Do not duplicate or combine credits.
@@ -1452,7 +1577,22 @@ CREDIT NORMALIZATION (CAPTIONS):
 - Canonicalize 'Korea Times photo' → 'Korea Times file'; never split as 'Korea Times / File'.
 - Do not combine 'Courtesy of ...' with any agency/in‑house credit (including 'Korea Times file')."""
 
-        instructions += """
+        # 본문 전용 날짜 규칙 지침 추가
+        if component_type == 'body':
+            instructions += """
+
+DATE NORMALIZATION (KST - BODY):
+- Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
+- If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
+- If it is listed on the future side, rewrite as '<weekday>'.
+- If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
+- If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
+- When ambiguous, do not convert; keep the absolute date.
+"""
+
+        # 한국 고유명 표기 교정은 본문/캡션에서만 사용 (헤드라인 제외)
+        if component_type in ('body', 'caption'):
+            instructions += """
 
 KOREAN-RELATED NOTATION (PALACE NAMES):
 - Rewrite 'Gyeongbokgung/Changdeokgung/Deoksugung/Changgyeonggung/Gyeonghuigung' to 'Gyeongbok/Changdeok/Deoksu/Changgyeong/Gyeonghui Palace'.
@@ -1479,37 +1619,34 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
 
         extra = getattr(self, '_extra_instructions', None)
         date_context = ""
-        # 캡션 교정 입력에도 로컬 기준일 + 기사 기준일(요일 포함) 간단히 주입
+        # 캡션/본문 교정 입력에도 로컬 기준일 + 기사 기준일(요일 포함) 컨텍스트 블록 주입
         try:
             sids = list(sentences_to_correct.keys())
             is_caption = any(str(sid).startswith('C') for sid in sids)
         except Exception:
             is_caption = False
-        if is_caption:
+        if is_caption or any(str(sid).startswith('B') for sid in sids):
             try:
                 sents = [sentences_to_correct[sid] for sid in sids]
                 local_ref = self._infer_local_reference_date(sents, article_date)
-                if local_ref and article_date:
+                ctx_block = None
+                if article_date:
                     try:
-                        first = (self._format_kst_date_context(article_date) or '').splitlines()[0]
+                        ctx_block = self._format_kst_date_context(article_date)
                     except Exception:
-                        first = f"Article Date (KST): {article_date}"
-                    date_context = f"Local Reference Day (KST): {local_ref}\n{first}\n\n"
+                        ctx_block = f"Article Date (KST): {article_date}"
+                if local_ref and ctx_block:
+                    date_context = f"Local Reference Day (KST): {local_ref}\n{ctx_block}\n\n"
                 elif local_ref:
                     date_context = f"Local Reference Day (KST): {local_ref}\n\n"
-                elif article_date:
-                    try:
-                        first = (self._format_kst_date_context(article_date) or '').splitlines()[0]
-                    except Exception:
-                        first = f"Article Date (KST): {article_date}"
-                    date_context = f"{first}\n\n"
+                elif ctx_block:
+                    date_context = f"{ctx_block}\n\n"
             except Exception:
                 if article_date:
                     try:
-                        first = (self._format_kst_date_context(article_date) or '').splitlines()[0]
+                        date_context = self._format_kst_date_context(article_date) + "\n\n"
                     except Exception:
-                        first = f"Article Date (KST): {article_date}"
-                    date_context = f"{first}\n\n"
+                        date_context = f"Article Date (KST): {article_date}\n\n"
         else:
             if article_date:
                 ctx = self._format_kst_date_context(article_date)

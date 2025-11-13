@@ -24,22 +24,26 @@
       "C32"
     ],
     "rules_by_component": {
-      "headline": 8,
+      "headline": 9,
       "caption": 24,
       "body": 33
     },
-    "last_updated": "2025-11-05T14:00:00.000000"
+    "last_updated": "2025-11-13T14:00:00.000000"
   },
   "rules": {
     "H01": {
       "rule_id": "H01",
       "component": "headline",
       "group": "Capitalization",
-      "description": "The first letter of the first word of the headline should be capitalized. The rest is treated as lowercase. This rule does not apply to abbreviations or acronyms. Acronyms must remain uppercase (e.g., IU, U.S.); proper nouns retain their standard capitalization mid‑headline (e.g., N. Korea, Kim).",
+      "description": "Use sentence case in headlines: capitalize only the first word and proper nouns. Do NOT use Title Case. Abbreviations and acronyms remain uppercase (e.g., IU, U.S., ITZY). Proper nouns keep their standard capitalization mid‑headline (e.g., N. Korea, Kim).",
       "examples": [
         {
           "incorrect": "korea to launch economic consultative bodies to brace for Trump 2.0",
           "correct": "Korea to launch economic consultative bodies to brace for Trump 2.0"
+        },
+        {
+          "incorrect": "Why Korea's Economic Growth Has Slowed Since the 1990s",
+          "correct": "Why Korea's economic growth has slowed since the 1990s"
         },
         {
           "incorrect": "Kdi says monetary tightening largely helped slow inflation",
@@ -52,6 +56,10 @@
         {
           "incorrect": "N. korea's Kim finalizes defense pact with Russia",
           "correct": "N. Korea's Kim finalizes defense pact with Russia"
+        },
+        {
+          "incorrect": "Can ITZY find focus with 'TUNNEL VISION'?",
+          "correct": "Can ITZY find focus with 'Tunnel Vision'?"
         }
       ]
     },
@@ -107,11 +115,19 @@
       "rule_id": "H06",
       "component": "headline",
       "group": "Writing Principles",
-      "description": "Keep headlines short and impactful, omitting articles (a, an, the) unless necessary for clarity.",
+      "description": "Omit articles (a, an, the) in headlines unless necessary for clarity or part of a proper name. Especially remove an article immediately after 'How'. Also remove articles in simple prepositional phrases (e.g., 'through a dog\u2019s POV' -> 'through dog\u2019s POV'). Do not remove articles within proper names (e.g., The Korea Times).",
       "examples": [
         {
           "incorrect": "City announces a new public transport initiative",
           "correct": "City announces new public transport initiative"
+        },
+        {
+          "incorrect": "How a small cafe is transforming Korea’s pet adoption culture",
+          "correct": "How small cafe is transforming Korea’s pet adoption culture"
+        },
+        {
+          "incorrect": "‘Good Boy’ brings horror to life through a dog’s POV",
+          "correct": "‘Good Boy’ brings horror to life through dog’s POV"
         }
       ]
     },
@@ -131,11 +147,23 @@
       "rule_id": "H08",
       "component": "headline",
       "group": "Writing Principles",
-      "description": "Put important word ahead of other words",
+      "description": "Lead with the most specific, newsworthy subject",
       "examples": [
         {
           "incorrect": "Blue Dragon Film Awards criticized for Jung Woo-sung post",
           "correct": "Jung Woo-sung post triggers backlash for Blue Dragon Film Awards"
+        }
+      ]
+    },
+    "H13": {
+      "rule_id": "H13",
+      "component": "headline",
+      "group": "Writing Principles",
+      "description": "Do not use periods in abbreviations within headlines. However, keep periods for two-letter country abbreviations such as U.S. and U.K.",
+      "examples": [
+        {
+          "incorrect": "E.U. leaders agree on migration deal",
+          "correct": "EU leaders agree on migration deal"
         }
       ]
     },
@@ -207,11 +235,15 @@
       "rule_id": "C06",
       "component": "caption",
       "group": "Person Description",
-      "description": "\"From left\" Placement: Always place \"from left\" before the list of names.",
+      "description": "If a sentence uses 'From left' with a list of names, place 'From left,' at the very beginning of that sentence. Do not place 'from left' mid‑sentence. Do not invent position markers (e.g., center/left/right/‘second from left’) or alter the original meaning or order; only move 'From left' to the start.",
       "examples": [
         {
           "incorrect": "RM, from left, j-hope, Jungkook, and Jimin pose at the event.",
           "correct": "From left, RM, j-hope, Jungkook, and Jimin pose at the event."
+        },
+        {
+          "incorrect": "They are, from left, Alice Kim, Bob Lee and Charlie Park.",
+          "correct": "From left, Alice Kim, Bob Lee and Charlie Park."
         }
       ]
     },
@@ -219,7 +251,7 @@
       "rule_id": "C07",
       "component": "caption",
       "group": "Date Format",
-      "description": "KST-based seven-day rule for captions: If the referenced date is within the previous seven days, write 'last <weekday>'. If it is within the next seven days, write '<weekday>'. Otherwise, write 'Month Day[, Year]' and omit the weekday. If the year is not given, assume the article year.",
+      "description": "If a sentence contains an absolute date, use the Date context (within 7 days, KST) shown in the prompt as the only basis for conversion. If the referenced date appears on the past side of that context, rewrite as ‘last <weekday>’. If it appears on the future side, rewrite as ‘<weekday>’. If it does not appear in the context (older than 7 days in the past or beyond 7 days in the future), keep ‘Month Day[, Year]’ and omit the weekday. If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input. When ambiguous, do not convert.",
       "examples": [
         {
           "incorrect": "The fire broke out, Nov. 3.",
@@ -228,6 +260,22 @@
         {
           "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
           "correct": "Protesters gather in front of the parliament in London, Oct. 21, 2025."
+        },
+        {
+          "incorrect": "A memorial was held last Sunday.",
+          "correct": "A memorial was held Nov. 2."
+        },
+        {
+          "incorrect": "The fire broke out, Nov. 12.",
+          "correct": "The fire broke out last Wednesday."
+        },
+        {
+          "incorrect": "The event was held Nov. 2, 2025.",
+          "correct": "The event was held Nov. 2, 2025."
+        },
+        {
+          "incorrect": "The event was held Nov. 2",
+          "correct": "The event was held Nov. 2"
         }
       ]
     },
@@ -485,7 +533,7 @@
       "rule_id": "A04",
       "component": "body",
       "group": "Date Format",
-      "description": "KST-based ±7-day rule (body): past ≤7 days → 'last <weekday>'; next ≤7 days → '<weekday>'; otherwise use 'Month Day[, Year]' and omit the weekday. Assume the article year if the year is omitted. Use local rebase when a relative cue appears with an absolute date.",
+      "description": "Use the Date context (within 7 days, KST) shown in the prompt as the only basis for conversion. If the referenced date appears on the past side of that context, rewrite as 'last <weekday>'. If it appears on the future side, rewrite as '<weekday>'. If it is not listed (older than 7 days in the past or beyond 7 days in the future), keep 'Month Day[, Year]' and omit the weekday. If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input. When ambiguous, do not convert.",
       "examples": [
         {
           "incorrect": "The fire broke out, Nov. 3.",
@@ -494,6 +542,18 @@
         {
           "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
           "correct": "Protesters gather in front of the parliament in London, Oct. 21, 2025."
+        },
+        {
+          "incorrect": "She uploaded the video Nov. 12.",
+          "correct": "She uploaded the video last Wednesday."
+        },
+        {
+          "incorrect": "The memorial was held last Sunday.",
+          "correct": "The memorial was held Nov. 2."
+        },
+        {
+          "incorrect": "The conference was held Nov. 2",
+          "correct": "The conference was held Nov. 2"
         }
       ]
     },
@@ -553,7 +613,7 @@
       "rule_id": "A09",
       "component": "body",
       "group": "Korean-Related Notation",
-      "description": "The Korean name is written with the family name first and the hyphen-connected given name following it. (e.g. Jung Woo-sung, Moon Ga-bi).",
+      "description": "한국인 이름이 있다면, 성을 앞에두고 이름을 뒤에 위치하게하라.",
       "examples": [
         {
           "incorrect": "GS E&C CEO Yoon-hong Huh speaks during a press conference.",

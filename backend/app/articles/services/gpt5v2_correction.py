@@ -132,6 +132,9 @@ def _collect_applicable_rules(violations: List, category: ArticleCategory) -> Li
     return rules
 
 
+    
+
+
 def _split_sentences_nltk(text: str) -> List[str]:
     if not text:
         return []
@@ -298,6 +301,8 @@ async def call_gpt5v2_correction_stream(
         if not full_corrected:
             logger.info("[gpt5v2] Corrected text empty for category %s. Falling back to translated text.", category)
             full_corrected = before_en
+
+        # (Removed) headline regex-based post-processing per request
 
         # Courtesy of ... dedupe and ". /" normalization for captions (safety net)
         courtesy_dedupe_applied = False
