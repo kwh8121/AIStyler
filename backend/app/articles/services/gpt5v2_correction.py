@@ -66,7 +66,7 @@ def _get_styler_v2():
     logger.info("Initializing GPT-5 v2 styler (3-Experts)...")
     # Expert 분리 토글 (기본 True, 환경/설정으로 제어 가능)
     try:
-        use_expert_split = bool((settings.__dict__.get('GPT5_V2_USE_EXPERT_SPLIT', True)))
+        use_expert_split = bool((settings.__dict__.get('GPT5_V2_USE_EXPERT_SPLIT', False)))
     except Exception:
         # settings에 없으면 환경변수 직접 확인
         import os as _os
@@ -82,6 +82,46 @@ def _get_styler_v2():
     )
     logger.info("GPT-5 v2 styler initialized")
     return _styler_v2
+
+
+def _reapply_a09_name_order(text: str) -> str:
+    """
+    BODY 최종 교정문에 대해, 안전한 범위에서 A09(한국인 이름 순서)를 재적용합니다.
+    - 'Given-name Family' (하이픈 연결) + 한국 성씨 화이트리스트일 때만
+    - 쉼표 표기(예: 'Hwang, Jin-seok')나 이미 family-first는 영향 없음(패턴 미적용)
+    """
+    if not text:
+        return text
+    surnames = [
+        'Kim','Lee','Rhee','Yi','Park','Bak','Pak','Choi','Jung','Jeong','Kang','Cho','Jo',
+        'Yoon','Yun','Jang','Chang','Lim','Im','Han','Shin','Sin','Yoo','Yu','Hwang','Kwon','Gwon',
+        'Oh','O','Seo','Suh','Moon','Mun','Ryu','Nam','Song','Hong','Jeon','Chun','Jun','Ko','Koh',
+        'Bae','Pae','Baek','Paek','Byun','Byeon','Cha','Ha','Heo','Hur','No','Roh','Noh'
+    ]
+    surname_regex = r"(?:" + "|".join(sorted(set(surnames), key=len, reverse=True)) + r")"
+    # 두 번째 토큰은 대소문자 모두 허용 (예: Jin-seok, Jin-Seok)
+    pattern = re.compile(rf"\b([A-Z][a-z]+-[A-Za-z][a-z]+)\s+({surname_regex})\b")
+
+    changes: List[tuple[str, str]] = []
+
+    def repl(m: re.Match) -> str:
+        given = m.group(1)
+        family = m.group(2)
+        original = f"{given} {family}"
+        corrected = f"{family} {given}"
+        changes.append((original, corrected))
+        return corrected
+
+    new_text = pattern.sub(repl, text)
+
+    # 실제 치환이 발생한 경우에만 로그 출력
+    if changes:
+        # 최대 3건만 프리뷰
+        preview = "; ".join([f"{o} -> {c}" for o, c in changes[:3]])
+        more = f" (+{len(changes)-3} more)" if len(changes) > 3 else ""
+        logger.info(f"[gpt5v2] A09 reapplied on BODY: {len(changes)} change(s): {preview}{more}")
+
+    return new_text
 
 
 def _wrap_with_tags(text: str, category: ArticleCategory) -> str:
@@ -302,7 +342,12 @@ async def call_gpt5v2_correction_stream(
             logger.info("[gpt5v2] Corrected text empty for category %s. Falling back to translated text.", category)
             full_corrected = before_en
 
-        # (Removed) headline regex-based post-processing per request
+        # Re-apply safe A09 rule (BODY only): ensure family-first order persists after AI replacement
+        if category == ArticleCategory.BODY and full_corrected:
+            before_a09 = full_corrected
+            full_corrected = _reapply_a09_name_order(full_corrected)
+            if before_a09 != full_corrected:
+                logger.info("[gpt5v2] Reapplied A09 (family-first) on BODY corrected text")
 
         # Courtesy of ... dedupe and ". /" normalization for captions (safety net)
         courtesy_dedupe_applied = False

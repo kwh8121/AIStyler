@@ -613,7 +613,7 @@
       "rule_id": "A09",
       "component": "body",
       "group": "Korean-Related Notation",
-      "description": "한국인 이름이 있다면, 성을 앞에두고 이름을 뒤에 위치하게하라.",
+      "description": "If there is a Korean name(ex. Se-ho Jo, Mi-sun Park) in the sentence, the position should be corrected so that the Korean last name comes before it.",
       "examples": [
         {
           "incorrect": "GS E&C CEO Yoon-hong Huh speaks during a press conference.",

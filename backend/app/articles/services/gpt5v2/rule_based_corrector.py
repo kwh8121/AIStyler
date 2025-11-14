@@ -16,6 +16,7 @@ Rule-Based Pre-Corrector for Korea Times Articles
 
 import re
 from typing import Dict, List, Tuple
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 import calendar
@@ -465,6 +466,10 @@ class RuleBasedCorrector:
         corrected, corr = self._apply_a35_birthrate(corrected, 'body')
         corrections.extend(corr)
 
+        # A09 - Korean name order (Given-name Family → Family Given-name)
+        corrected, corr = self._apply_a09_korean_name_order(corrected, 'body')
+        corrections.extend(corr)
+ 
         # A25 - Seoul districts (-gu → District)
         corrected, corr = self._apply_a25_seoul_districts(corrected, 'body')
         corrections.extend(corr)
@@ -484,6 +489,68 @@ class RuleBasedCorrector:
         corrections.extend(corr)
 
         return corrected, corrections
+
+    def _apply_a09_korean_name_order(self, text: str, component: str) -> Tuple[str, List[Correction]]:
+        """
+        A09 - 한국인 이름 표기 순서 교정
+        - 'Given-name Family' (예: Jin-seok Hwang) → 'Family Given-name' (Hwang Jin-seok)
+        - 안전장치:
+          * 성씨 화이트리스트에 포함되는 경우만 교정
+          * 하이픈 연결된 이름(두 음절)일 때 우선 적용 (과교정 방지)
+          * 'Family, Given-name' (쉼표 표기)나 이미 'Family Given-name'인 경우 건드리지 않음
+
+        Returns: (corrected_text, [Correction,...])
+        """
+        if not text:
+            return text, []
+
+        import re
+
+        # 대표적인 한국 성씨 화이트리스트 (로마자 표기)
+        surnames = [
+            'Kim','Lee','Rhee','Yi','Park','Bak','Pak','Choi','Jung','Jeong','Kang','Kang','Cho','Jo',
+            'Yoon','Yun','Jang','Chang','Lim','Im','Han','Shin','Sin','Yoo','Yu','Hwang','Kwon','Gwon',
+            'Oh','O','Seo','Suh','Soe','Moon','Mun','Ryu','Yu','Nam','Song','Hong','Jeon','Chun','Jun',
+            'Ko','Koh','Bae','Pae','Baek','Paek','Byun','Byeon','Cha','Ha','Heo','Hur','No','Roh','Noh'
+        ]
+        surname_regex = r"(?:" + "|".join(sorted(set(surnames), key=len, reverse=True)) + r")"
+
+        # 하이픈 연결 이름 우선: Jin-seok Hwang → Hwang Jin-seok
+        # 앞뒤 경계를 단어 경계로 제한, 이미 'Hwang, Jin-seok' 또는 'Hwang Jin-seok'은 매치되지 않음
+        # 두 번째 토큰은 대소문자 모두 허용 (예: Jin-seok, Jin-Seok)
+        pattern = re.compile(rf"\b([A-Z][a-z]+-[A-Za-z][a-z]+)\s+({surname_regex})\b")
+
+        corrections: List[Correction] = []
+
+        def repl(m: re.Match) -> str:
+            given = m.group(1)
+            family = m.group(2)
+            start = m.start()
+            original = f"{given} {family}"
+            corrected = f"{family} {given}"
+
+            # 쉼표 표기(예: Hwang, Jin-seok)는 제외 - 이 패턴엔 원래 안 걸리지만 안전체크 유지
+            around = text[max(0, start-5):start+len(original)+5]
+            if "," in around:
+                return original
+
+            corrections.append(Correction(
+                rule_id='A09',
+                component=component,
+                original=original,
+                corrected=corrected,
+                position=start,
+            ))
+            return corrected
+
+        new_text = pattern.sub(repl, text)
+        # 실제 교정이 발생한 경우에만 로깅
+        if corrections:
+            _logger = logging.getLogger(__name__)
+            preview = "; ".join([f"{c.original} -> {c.corrected}" for c in corrections[:3]])
+            more = f" (+{len(corrections)-3} more)" if len(corrections) > 3 else ""
+            _logger.info(f"[rule-based] A09 applied: {len(corrections)} change(s): {preview}{more}")
+        return new_text, corrections
 
     def _correct_caption(self, text: str, article_datetime: datetime = None) -> Tuple[str, List[Correction]]:
         """캡션 교정

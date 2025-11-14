@@ -76,6 +76,80 @@ class AIStylerGPT5Sentence:
         logger.info(f"GPT-5 Sentence-Based AI Styler 초기화 완료 - AI 처리 규칙: {len(self.ai_rules)}개")
         logger.info(f"  Reasoning effort: {reasoning_effort}, Text verbosity: {text_verbosity}, Compressed prompt: {use_compressed_prompt}")
 
+    # --- OpenAI call helpers (env‑driven, with graceful fallback) ---
+    def _env_float(self, name: str, default: float | None) -> float | None:
+        val = os.getenv(name)
+        if val is None:
+            return default
+        try:
+            return float(val)
+        except Exception:
+            return default
+
+    def _env_bool(self, name: str, default: bool) -> bool:
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        return raw.strip().lower() in ("1", "true", "yes", "y")
+
+    async def _responses_create_async(self, *, model: str, input_blocks: list, tools: list, tool_choice: str | None,
+                                      temperature: float | None, top_p: float | None,
+                                      include_reasoning: bool, reasoning_effort: str | None,
+                                      text_verbosity: str | None):
+        params: dict = {
+            "model": model,
+            "input": input_blocks,
+            "tools": tools,
+        }
+        if tool_choice:
+            params["tool_choice"] = tool_choice
+        if temperature is not None:
+            params["temperature"] = temperature
+        if top_p is not None:
+            params["top_p"] = top_p
+        if include_reasoning and reasoning_effort:
+            params["reasoning"] = {"effort": reasoning_effort}
+        if text_verbosity:
+            params["text"] = {"verbosity": text_verbosity}
+
+        try:
+            return await self.async_client.responses.create(**params)
+        except Exception as e:
+            # Fallback: remove optional fields (reasoning/text) and retry once
+            params.pop("reasoning", None)
+            params.pop("text", None)
+            try:
+                return await self.async_client.responses.create(**params)
+            except Exception:
+                raise
+
+    def _responses_create_sync(self, *, model: str, input_blocks: list, tools: list, tool_choice: str | None,
+                                temperature: float | None, top_p: float | None,
+                                include_reasoning: bool, reasoning_effort: str | None,
+                                text_verbosity: str | None):
+        params: dict = {
+            "model": model,
+            "input": input_blocks,
+            "tools": tools,
+        }
+        if tool_choice:
+            params["tool_choice"] = tool_choice
+        if temperature is not None:
+            params["temperature"] = temperature
+        if top_p is not None:
+            params["top_p"] = top_p
+        if include_reasoning and reasoning_effort:
+            params["reasoning"] = {"effort": reasoning_effort}
+        if text_verbosity:
+            params["text"] = {"verbosity": text_verbosity}
+
+        try:
+            return self.client.responses.create(**params)
+        except Exception:
+            params.pop("reasoning", None)
+            params.pop("text", None)
+            return self.client.responses.create(**params)
+
     def _load_style_guides(self) -> Dict:
         """스타일 가이드 로드 (모듈 상대 경로)"""
         base_dir = os.path.dirname(__file__)
@@ -573,7 +647,7 @@ class AIStylerGPT5Sentence:
     ) -> Dict[str, Any]:
         """2단계 AI 처리: Detection (GPT-5) -> Correction (GPT-5-mini)"""
 
-        # 1단계: Detection (GPT-5) - 위반 감지만
+        # 1단계: Detection - 위반 감지만
         logger.info("  Step 1: Detection (GPT-5) - 위반 감지 중...")
         detections = self._detect_violations(numbered_sentences, sentence_map, article_date)
 
@@ -583,7 +657,7 @@ class AIStylerGPT5Sentence:
 
         logger.info(f"  감지된 위반: {len(detections)}개")
 
-        # 2단계: Correction (GPT-5-mini) - 감지된 문장만 교정
+        # 2단계: Correction - 감지된 문장만 교정
         # 감지와 교정 사이에 소폭 지연(기본 2초)으로 레이트/연결 안정화
         try:
             _gap = float(os.getenv('OPENAI_DETECT_TO_CORRECT_DELAY_SEC', '2'))
@@ -597,7 +671,7 @@ class AIStylerGPT5Sentence:
             except Exception:
                 pass
 
-        logger.info("  Step 2: Correction (GPT-5-minizz) - 감지된 문장 교정 중...")
+        logger.info("  Step 2: Correction - 감지된 문장 교정 중...")
         corrections = self._correct_detected_sentences(detections, sentence_map, article_date)
 
         logger.info(f"  교정 완료: {len(corrections)}개 문장")
@@ -702,21 +776,30 @@ class AIStylerGPT5Sentence:
 
         # 프롬프트 로깅
         prompt_type = "COMPRESSED" if self.use_compressed_prompt else "STANDARD"
-        logger.info(f"    [{component_type.upper()}] {prompt_type} Instructions 크기: {len(instructions)} chars, 규칙 수: {len(component_rules)}개, Reasoning: {self.reasoning_effort}")
+        logger.info(f" [{component_type.upper()}] {prompt_type} Instructions 크기: {len(instructions)} chars, 규칙 수: {len(component_rules)}개")
 
         try:
-            # Async API 호출
-            response = await self.async_client.responses.create(
-                model="gpt-5-chat-latest",
-                # reasoning={"effort": self.reasoning_effort},
-                # text={"verbosity": self.text_verbosity},
-                input=[
+            # Async API 호출 (환경변수 기반 유연 파라미터)
+            detect_model = os.getenv('OPENAI_DETECT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest'))
+            tool_choice = os.getenv('OPENAI_TOOL_CHOICE', 'required')
+            temp = self._env_float('OPENAI_DETECT_TEMPERATURE', 0.1)
+            top_p = self._env_float('OPENAI_DETECT_TOP_P', 0.02)
+            include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', False)
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  None)
+
+            response = await self._responses_create_async(
+                model=detect_model,
+                input_blocks=[
                     {"role": "system", "content": instructions},
                     {"role": "user", "content": input_content},
                 ],
                 tools=tools,
-                tool_choice="required",
-                temperature=0.1
+                tool_choice=tool_choice,
+                temperature=temp,
+                top_p=top_p,
+                include_reasoning=include_reasoning,
+                reasoning_effort=self.reasoning_effort,
+                text_verbosity=text_verbosity,
             )
             # Dump prompts
             self._dump_prompt(
@@ -773,17 +856,26 @@ class AIStylerGPT5Sentence:
         logger.info(f"    [{component_type.upper()}] Instructions 크기: {len(instructions)} chars, 규칙 수: {len(component_rules)}개")
 
         try:
-            response = self.client.responses.create(
-                model="gpt-5-chat-latest",
-                # reasoning={"effort": self.reasoning_effort},
-                # text={"verbosity": self.text_verbosity},
-                input=[
+            detect_model = os.getenv('OPENAI_DETECT_MODEL', os.getenv('GPT5_V2_DETECT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest')))
+            tool_choice = os.getenv('OPENAI_TOOL_CHOICE', os.getenv('GPT5_V2_TOOL_CHOICE', 'required'))
+            temp = self._env_float('OPENAI_DETECT_TEMPERATURE', self._env_float('GPT5_V2_DETECT_TEMPERATURE', 0.1))
+            top_p = self._env_float('OPENAI_DETECT_TOP_P', self._env_float('GPT5_V2_DETECT_TOP_P', None))
+            include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', self._env_bool('GPT5_V2_INCLUDE_REASONING', False))
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY', os.getenv('GPT5_V2_TEXT_VERBOSITY', None))
+
+            response = self._responses_create_sync(
+                model=detect_model,
+                input_blocks=[
                     {"role": "system", "content": instructions},
                     {"role": "user", "content": input_content},
                 ],
                 tools=tools,
-                tool_choice="required",
-                temperature=0.1,
+                tool_choice=tool_choice,
+                temperature=temp,
+                top_p=top_p,
+                include_reasoning=include_reasoning,
+                reasoning_effort=self.reasoning_effort,
+                text_verbosity=text_verbosity,
             )
 
             detections = []
@@ -829,6 +921,9 @@ class AIStylerGPT5Sentence:
         special_focus = ""
         if component_type == 'title':
             special_focus = "\n⚡ **SPECIAL FOCUS FOR HEADLINES**: Pay close attention to H06 (omitting articles a/an/the), H01 (first letter capitalization), and H02 (avoiding ALL CAPS)."
+        elif component_type == 'body':
+            # BODY 전용 특별 강조: A09 한국인 이름 순서
+            special_focus = ""
 
         # JSON 규칙 포맷팅 (그룹 정보 포함)
         rules_text = []
@@ -1303,18 +1398,26 @@ TASK:
         instructions = self._build_correction_instructions(component_type)
 
         try:
-            # Async API 호출 - GPT-5 minimal reasoning 사용 (Correction은 단순 작업)
-            response = await self.async_client.responses.create(
-                model="gpt-5-chat-latest",  # GPT-5 사용
-                # reasoning={"effort": "low"},  # minimal reasoning으로 속도 향상
-                # text={"verbosity": "low"},
-                # instructions=instructions,
-                input=[
+            # Async API 호출 (환경변수 기반 유연 파라미터)
+            correct_model = os.getenv('OPENAI_CORRECT_MODEL', os.getenv('GPT5_V2_CORRECT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest')))
+            tool_choice = os.getenv('OPENAI_TOOL_CHOICE', os.getenv('GPT5_V2_TOOL_CHOICE', 'required'))
+            temp = self._env_float('OPENAI_CORRECT_TEMPERATURE', self._env_float('GPT5_V2_CORRECT_TEMPERATURE', None))
+            top_p = self._env_float('OPENAI_CORRECT_TOP_P', self._env_float('GPT5_V2_CORRECT_TOP_P', 0.2))
+            include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', self._env_bool('GPT5_V2_INCLUDE_REASONING', False))
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY', os.getenv('GPT5_V2_TEXT_VERBOSITY', None))
+
+            response = await self._responses_create_async(
+                model=correct_model,
+                input_blocks=[
                     {"role": "system","content": [{"type": "input_text", "text": instructions}]},
                     {"role": "user", "content": input_content}],
                 tools=tools,
-                tool_choice="required",
-                top_p=0.2,
+                tool_choice=tool_choice,
+                temperature=temp,
+                top_p=top_p,
+                include_reasoning=include_reasoning,
+                reasoning_effort=self.reasoning_effort,
+                text_verbosity=text_verbosity,
             )
             # Dump prompts
             self._dump_prompt(
@@ -1578,17 +1681,17 @@ CREDIT NORMALIZATION (CAPTIONS):
 - Do not combine 'Courtesy of ...' with any agency/in‑house credit (including 'Korea Times file')."""
 
         # 본문 전용 날짜 규칙 지침 추가
-        if component_type == 'body':
-            instructions += """
+#         if component_type == 'body':
+#             instructions += """
 
-DATE NORMALIZATION (KST - BODY):
-- Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
-- If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
-- If it is listed on the future side, rewrite as '<weekday>'.
-- If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
-- If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
-- When ambiguous, do not convert; keep the absolute date.
-"""
+# DATE NORMALIZATION (KST - BODY):
+# - Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
+# - If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
+# - If it is listed on the future side, rewrite as '<weekday>'.
+# - If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
+# - If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
+# - When ambiguous, do not convert; keep the absolute date.
+# """
 
         # 한국 고유명 표기 교정은 본문/캡션에서만 사용 (헤드라인 제외)
         if component_type in ('body', 'caption'):

@@ -27,7 +27,6 @@ services:
       - OPENAI_PROMPT_DUMP_DIR=/app/logs/openai_prompts
       - GPT5_V2_DUMP_PROMPTS=true
       - GPT5_V2_ENABLED=true
-      - OPENAI_DUMP_PROMPTS=true
       - USE_OPENAI=true
       - STYLE_GUIDES_FILE=/app/seed/style_guides.json
     depends_on:

@@ -53,11 +53,9 @@ async def get_prompt(db: AsyncSession, *, category: ArticleCategory, override: s
     else:
         logger.warning(f"⚠️ No prompt found in DB for category: {category_str}, using default")
     
-    # 비어있다면 아래 기본 프롬프트 사용하는데, 변경 가능성 o
+    # 비어있다면 아래 기본 프롬프트
     default_prompt = f"Correct the following {category_str.lower()} text in English with journalistic style."
     return p or default_prompt
-
-# DeepL 클라이언트 사용은 translation 모듈로 이관됨 (여기서는 미사용)
 
 async def translate_to_en(text: str) -> str:
     """한국어 텍스트를 영어로 번역 (프로바이더는 env로 선택)"""
@@ -582,7 +580,6 @@ def _build_full_text_from_corrections(sentence_corrections: dict, original_sente
                     logger.warning(f"Sentence {i}: No correction and index out of range, skipping")
         
         # 문장들을 공백으로 연결 (기본적으로 단일 공백)
-        # TODO: 향후 원본의 paragraph 구조를 보존하는 로직 추가 가능
         full_text = " ".join(corrected_sentences)
         
         logger.info(f"Built full_text from {len(corrected_sentences)} sentences (total length: {len(full_text)} chars)")
