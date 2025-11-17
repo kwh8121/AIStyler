@@ -93,7 +93,7 @@ def _reapply_a09_name_order(text: str) -> str:
     if not text:
         return text
     surnames = [
-        'Kim','Lee','Rhee','Yi','Park','Bak','Pak','Choi','Jung','Jeong','Kang','Cho','Jo',
+        'Kim', 'Kwak', 'Gwak', 'Lee','Rhee','Yi','Park','Bak','Pak','Choi','Jung','Jeong','Kang','Cho','Jo',
         'Yoon','Yun','Jang','Chang','Lim','Im','Han','Shin','Sin','Yoo','Yu','Hwang','Kwon','Gwon',
         'Oh','O','Seo','Suh','Moon','Mun','Ryu','Nam','Song','Hong','Jeon','Chun','Jun','Ko','Koh',
         'Bae','Pae','Baek','Paek','Byun','Byeon','Cha','Ha','Heo','Hur','No','Roh','Noh'
