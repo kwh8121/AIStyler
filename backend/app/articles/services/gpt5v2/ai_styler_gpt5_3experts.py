@@ -236,14 +236,12 @@ class AIStylerGPT5_3Experts(AIStylerGPT5Sentence):
 
         try:
             # Async API 호출 (재시도 래퍼 적용)
+            input_blocks = self._pack_prompt_blocks(instructions, input_content, for_correction=False)
             response = await self.async_client.responses.create(
                 model="gpt-5-chat-latest",
                 # reasoning={"effort": self.reasoning_effort},
                 # text={"verbosity": self.text_verbosity},
-                input=[
-                    {"role": "system", "content": instructions},
-                    {"role": "user", "content": input_content},
-                ],
+                input=input_blocks,
                 tools=tools,
                 tool_choice="required",
                 temperature=0.1
@@ -263,7 +261,7 @@ class AIStylerGPT5_3Experts(AIStylerGPT5Sentence):
             except Exception:
                 pass
 
-            detections = []
+            detections: List[Dict] = []
             for item in response.output:
                 if item.type == "function_call" and item.name == "detect_style_violations":
                     function_args = json.loads(item.arguments)

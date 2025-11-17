@@ -103,9 +103,9 @@ class AIStylerGPT5Sentence:
         }
         if tool_choice:
             params["tool_choice"] = tool_choice
-        if temperature is not None:
+        if temperature:
             params["temperature"] = temperature
-        if top_p is not None:
+        if top_p:
             params["top_p"] = top_p
         if include_reasoning and reasoning_effort:
             params["reasoning"] = {"effort": reasoning_effort}
@@ -150,6 +150,35 @@ class AIStylerGPT5Sentence:
             params.pop("text", None)
             return self.client.responses.create(**params)
 
+    def _pack_prompt_blocks(self, instructions: str, input_content: str, *, for_correction: bool = False) -> list:
+        """Build input blocks for OpenAI Responses API.
+
+        If env GPT5_V2_USER_ONLY_PROMPT=true, pack instructions + input in a single user block.
+        Otherwise, keep the default: system=instructions, user=input_content.
+
+        When for_correction=True, we avoid the special input_text type and keep plain text for simplicity in tests.
+        """
+        try:
+            user_only = str(os.getenv('GPT5_V2_USER_ONLY_PROMPT', 'false')).strip().lower() in ('1', 'true', 'yes', 'y')
+        except Exception:
+            user_only = False
+
+        if user_only:
+            merged = (instructions or '').rstrip() + "\n\n" + (input_content or '')
+            return [{"role": "user", "content": merged}]
+
+        # default split: system + user
+        if for_correction:
+            return [
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": input_content},
+            ]
+        else:
+            return [
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": input_content},
+            ]
+
     def _load_style_guides(self) -> Dict:
         """스타일 가이드 로드 (모듈 상대 경로)"""
         base_dir = os.path.dirname(__file__)
@@ -191,6 +220,203 @@ class AIStylerGPT5Sentence:
             import re as _re
             sentences = _re.split(r"(?<=[.!?])\s+", text)
         return [s.strip() for s in sentences if s and s.strip()]
+
+    # --- Local acronym pair detection (within current correction request) ---
+    def _detect_local_acronym_pairs(self, sentences_by_id: Dict[str, str]) -> List[Dict[str, str]]:
+        """현재 교정 요청에 포함된 문장들 안에서만 약어 도입쌍을 탐지합니다.
+
+        Rules:
+        - 패턴: '<long form> (<ACRONYM[s|es]>)' 또는 '<ACRONYM[s|es]> (<long form>)'
+        - 약어 base는 대문자 알파벳(+점)에서 점을 제거하고, 복수 접미사 s|es를 제거한 형태
+        - long form 후보는 괄호 앞의 마지막 1~8개 단어(하이픈은 서브 단어로 분해하여 이니셜 계산)
+        - 첫 도입만 기록 (동일 약어 base는 첫 번째만)
+
+        Returns: [{ 'sentence_id', 'acronym': display, 'acronym_base': base, 'long_form' }]
+        """
+        import re
+
+        # 정렬: 문장 ID 순으로 일관되게 처리 (T/B/C + 숫자)
+        def _sid_key(sid: str) -> tuple:
+            try:
+                return (sid[0], int(sid[1:]))
+            except Exception:
+                return (sid[0] if sid else 'Z', 10**9)
+
+        items = sorted(sentences_by_id.items(), key=lambda kv: _sid_key(kv[0]))
+
+        pairs: List[Dict[str, str]] = []
+        seen: set[str] = set()
+
+        # 괄호 내부 약어/long form 추출
+        paren_pattern = re.compile(r"\(([^)]+)\)")
+
+        def normalize_acronym(token: str) -> tuple[str, str]:
+            raw = token.strip()
+            # 점 제거 (예: U.S. → US)
+            no_dots = raw.replace('.', '')
+            # 복수 접미사 제거 (대소문자 구분 없이)
+            lower = no_dots.lower()
+            base = no_dots
+            if lower.endswith('es'):
+                base = no_dots[:-2]
+            elif lower.endswith('s'):
+                base = no_dots[:-1]
+            return base.upper(), raw
+
+        def initials_from_tokens(tokens: List[str]) -> str:
+            acc: List[str] = []
+            for t in tokens:
+                # 하이픈/슬래시로 서브 단어 분해
+                subs = re.split(r"[-/]+", t)
+                for sub in subs:
+                    m = re.match(r"[A-Za-z]", sub)
+                    if m:
+                        acc.append(sub[0].upper())
+            return ''.join(acc)
+
+        word_pattern = re.compile(r"[A-Za-z][A-Za-z&/\-]*")
+
+        for sid, text in items:
+            if not text:
+                continue
+            # 괄호 묶음 순회
+            for m in paren_pattern.finditer(text):
+                inside = m.group(1).strip()
+                # 후보 1: 괄호 안이 약어
+                if re.fullmatch(r"[A-Za-z.]{2,20}", inside):
+                    base, display = normalize_acronym(inside)
+                    if base and base not in seen:
+                        # 괄호 앞의 단어들에서 long form 후보 생성
+                        left = text[:m.start()].strip()
+                        words = word_pattern.findall(left)
+                        # 오른쪽 끝에서 최대 8단어 윈도우로 매칭
+                        matched_long = None
+                        max_win = 8
+                        for win in range(1, max_win + 1):
+                            if len(words) < win:
+                                break
+                            window = words[-win:]
+                            ini = initials_from_tokens(window)
+                            if ini == base:
+                                matched_long = ' '.join(window)
+                                break
+                        if matched_long:
+                            pairs.append({
+                                'sentence_id': sid,
+                                'acronym': display,
+                                'acronym_base': base,
+                                'long_form': matched_long,
+                            })
+                            seen.add(base)
+                            continue
+                # 후보 2: 괄호 안이 long form, 괄호 밖 바로 앞 토큰이 약어
+                # 예: DNA (deoxyribonucleic acid)
+                # 간단 처리: 괄호 밖 오른쪽 직전 토큰 1개만 약어 후보로 사용
+                right_before = text[:m.start()].rstrip()
+                m2 = re.search(r"([A-Za-z.]{2,20})\s*$", right_before)
+                if m2:
+                    acronym_out = m2.group(1)
+                    base, display = normalize_acronym(acronym_out)
+                    if base and base not in seen:
+                        # 괄호 안 단어로부터 이니셜 생성해 비교
+                        inside_words = word_pattern.findall(inside)
+                        if inside_words:
+                            if initials_from_tokens(inside_words) == base:
+                                long_form = ' '.join(inside_words)
+                                pairs.append({
+                                    'sentence_id': sid,
+                                    'acronym': display,
+                                    'acronym_base': base,
+                                    'long_form': long_form,
+                                })
+                                seen.add(base)
+                                continue
+
+        return pairs
+
+    def _augment_detections_with_local_acronym(
+        self,
+        detections: List[Dict],
+        numbered_sentences: Dict[str, List[str]]
+    ) -> List[Dict]:
+        """Detection 결과에 로컬 약어 규칙(A11) 위반을 합성하여 추가합니다.
+
+        - 범위: BODY(B*) 문장만 대상
+        - 절차: 로컬 도입쌍을 찾고, 도입 이후 문장에서 long form이 다시 나오면 A11 위반을 합성
+        - 기존 Detection에 동일 (sentence_id, A11)이 있으면 중복 추가하지 않음
+        """
+        try:
+            body_sents = {f"B{i+1}": s for i, s in enumerate(numbered_sentences.get('body', []) or [])}
+            if not body_sents:
+                return detections
+
+            local_pairs = self._detect_local_acronym_pairs(body_sents)
+            if not local_pairs:
+                return detections
+
+            # 기존 (sid, rule_id) 집합
+            existing = set()
+            for d in detections:
+                sid = d.get('sentence_id')
+                rid = d.get('rule_id')
+                if sid and rid:
+                    existing.add((sid, rid))
+
+            # A11 rule 메타
+            a11 = self.ai_rules.get('A11', {
+                'description': 'Acronyms: first reference uses long form (ACRONYM), subsequent references use acronym only.',
+                'group': 'Abbreviations'
+            })
+            desc = a11.get('description', 'Acronym subsequent references must use acronym only')
+            group = a11.get('group', 'Abbreviations')
+
+            import re as _re
+            augmented: List[Dict] = []
+
+            # 각 약어 도입쌍에 대해, 도입 이후 문장들 스캔
+            def sid_index(sid: str) -> int:
+                try:
+                    return int(sid[1:])
+                except Exception:
+                    return 10**9
+
+            for pair in local_pairs:
+                first_sid = pair['sentence_id']  # e.g., B3
+                long_form = pair['long_form']
+                if not long_form:
+                    continue
+                # 패턴: 단어 경계 기반 (대소문자 무시)
+                pat = _re.compile(rf"\b{_re.escape(long_form)}\b", _re.IGNORECASE)
+
+                first_idx = sid_index(first_sid)
+                for sid, sent in body_sents.items():
+                    if sid_index(sid) <= first_idx:
+                        continue
+                    if (sid, 'A11') in existing:
+                        continue
+                    if pat.search(sent or ''):
+                        augmented.append({
+                            'sentence_id': sid,
+                            'rule_id': 'A11',
+                            'component': 'body',
+                            'rule_description': desc,
+                            'violation_type': group,
+                        })
+                        existing.add((sid, 'A11'))
+
+            if augmented:
+                # 로깅 프리뷰
+                try:
+                    ids = ", ".join([a['sentence_id'] for a in augmented[:5]])
+                    more = f" (+{len(augmented)-5} more)" if len(augmented) > 5 else ""
+                    logger.info(f"[A11] Local acronym augmentation: {len(augmented)} sentences → {ids}{more}")
+                except Exception:
+                    pass
+
+            return detections + augmented
+        except Exception as exc:
+            logger.debug(f"Local acronym augmentation failed: {exc}")
+            return detections
 
     # Prompt dump helper (env-based)
     def _dump_prompt(self, kind: str, text: str, metadata: Optional[Dict] = None) -> None:
@@ -567,6 +793,8 @@ class AIStylerGPT5Sentence:
                 if len(sentences) > 3:
                     logger.info(f"      ... (총 {len(sentences)}개 문장)")
 
+        self._acronym_memory = None
+
         # 3단계: GPT-5 AI 기반 교정
         logger.info("3단계: GPT-5 AI 기반 교정 처리 중...")
         ai_result = self._ai_correct_sentences(numbered_sentences, sentence_map, article_date)
@@ -576,7 +804,12 @@ class AIStylerGPT5Sentence:
 
         # 4단계: 문장 교체 및 기사 재구성
         logger.info("4단계: 문장 교체 및 기사 재구성...")
-        corrected_components = self._apply_corrections(components, numbered_sentences, ai_violations)
+        # 로컬 약어 강제 규칙 생성(BODY 내 첫 도입 이후 문장만 적용)
+        try:
+            local_enforce = self._build_local_acronym_enforcement_map(numbered_sentences)
+        except Exception:
+            local_enforce = None
+        corrected_components = self._apply_corrections(components, numbered_sentences, ai_violations, local_acronym_enforcement=local_enforce)
 
         # 기사 재구성
         final_text = f"[TITLE]{corrected_components['title']}[/TITLE]"
@@ -651,11 +884,34 @@ class AIStylerGPT5Sentence:
         logger.info("  Step 1: Detection (GPT-5) - 위반 감지 중...")
         detections = self._detect_violations(numbered_sentences, sentence_map, article_date)
 
+        # 로컬 약어(A11) 기반 위반 합성 추가: 도입 이후 long form 반복 문장 포함
+        try:
+            before_cnt = len(detections)
+            detections = self._augment_detections_with_local_acronym(detections, numbered_sentences)
+            if len(detections) > before_cnt:
+                logger.info(f"  감지된 위반(A11 보강 포함): {len(detections)}개 (+{len(detections)-before_cnt})")
+            else:
+                logger.info(f"  감지된 위반: {len(detections)}개")
+        except Exception as exc:
+            logger.debug(f"A11 augmentation skipped: {exc}")
+
+        # 로컬 약어 도입 문장에 잘못 부여된 A11 감지를 제거 (첫 도입 문장은 유지)
+        try:
+            body_sents = {f"B{i+1}": s for i, s in enumerate(numbered_sentences.get('body', []) or [])}
+            local_pairs = self._detect_local_acronym_pairs(body_sents) if body_sents else []
+            intro_sids = set(p['sentence_id'] for p in local_pairs)
+            if intro_sids:
+                before = len(detections)
+                detections = [d for d in detections if not (d.get('rule_id') == 'A11' and d.get('sentence_id') in intro_sids)]
+                removed = before - len(detections)
+                if removed > 0:
+                    logger.info(f"  A11 intro false-positives removed: {removed}")
+        except Exception as exc:
+            logger.debug(f"A11 intro filter skipped: {exc}")
+
         if not detections:
             logger.info("  감지된 위반 없음")
             return {'violations': []}
-
-        logger.info(f"  감지된 위반: {len(detections)}개")
 
         # 2단계: Correction - 감지된 문장만 교정
         # 감지와 교정 사이에 소폭 지연(기본 2초)으로 레이트/연결 안정화
@@ -782,17 +1038,15 @@ class AIStylerGPT5Sentence:
             # Async API 호출 (환경변수 기반 유연 파라미터)
             detect_model = os.getenv('OPENAI_DETECT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest'))
             tool_choice = os.getenv('OPENAI_TOOL_CHOICE', 'required')
-            temp = self._env_float('OPENAI_DETECT_TEMPERATURE', 0.1)
-            top_p = self._env_float('OPENAI_DETECT_TOP_P', 0.02)
+            temp = self._env_float('OPENAI_DETECT_TEMPERATURE', None)
+            top_p = self._env_float('OPENAI_DETECT_TOP_P', None)
             include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', False)
             text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  None)
 
+            input_blocks = self._pack_prompt_blocks(instructions, input_content, for_correction=False)
             response = await self._responses_create_async(
                 model=detect_model,
-                input_blocks=[
-                    {"role": "system", "content": instructions},
-                    {"role": "user", "content": input_content},
-                ],
+                input_blocks=input_blocks,
                 tools=tools,
                 tool_choice=tool_choice,
                 temperature=temp,
@@ -813,7 +1067,7 @@ class AIStylerGPT5Sentence:
                 {"component": component_type}
             )
 
-            detections = []
+            detections: List[Dict] = []
             for item in response.output:
                 if item.type == "function_call" and item.name == "detect_style_violations":
                     function_args = json.loads(item.arguments)
@@ -943,8 +1197,7 @@ class AIStylerGPT5Sentence:
         rules_section = '\n\n'.join(rules_text)
         extra = getattr(self, '_extra_instructions', None)
         instructions = f"""
-You are an expert copy editor for The Korea Times, specializing in photo captions.
-Your task is to meticulously review the provided caption sentence(s) and identify all violations based on the official Caption Style Guide below. You must be thorough, accurate, and use the provided examples to guide your judgment.        
+You are an expert copy editor for The Korea Times.
 {special_focus}
 
 TASK: DETECT {display_name} style guide violations - BE THOROUGH AND ACCURATE.
@@ -1400,17 +1653,16 @@ TASK:
         try:
             # Async API 호출 (환경변수 기반 유연 파라미터)
             correct_model = os.getenv('OPENAI_CORRECT_MODEL', os.getenv('GPT5_V2_CORRECT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest')))
-            tool_choice = os.getenv('OPENAI_TOOL_CHOICE', os.getenv('GPT5_V2_TOOL_CHOICE', 'required'))
-            temp = self._env_float('OPENAI_CORRECT_TEMPERATURE', self._env_float('GPT5_V2_CORRECT_TEMPERATURE', None))
-            top_p = self._env_float('OPENAI_CORRECT_TOP_P', self._env_float('GPT5_V2_CORRECT_TOP_P', 0.2))
-            include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', self._env_bool('GPT5_V2_INCLUDE_REASONING', False))
-            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY', os.getenv('GPT5_V2_TEXT_VERBOSITY', None))
+            tool_choice = os.getenv('OPENAI_TOOL_CHOICE', 'required')
+            temp = self._env_float('OPENAI_CORRECT_TEMPERATURE', None)
+            top_p = self._env_float('OPENAI_CORRECT_TOP_P', None)
+            include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', False)
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  None)
 
+            input_blocks = self._pack_prompt_blocks(instructions, input_content, for_correction=True)
             response = await self._responses_create_async(
                 model=correct_model,
-                input_blocks=[
-                    {"role": "system","content": [{"type": "input_text", "text": instructions}]},
-                    {"role": "user", "content": input_content}],
+                input_blocks=input_blocks,
                 tools=tools,
                 tool_choice=tool_choice,
                 temperature=temp,
@@ -1463,14 +1715,19 @@ TASK:
 
         for i, detection in enumerate(detections):
             sentence_id = detection['sentence_id']
+            # Canonicalize rule ID if this rule is an alias (e.g., A43 with rule_id="A20")
+            rid = detection.get('rule_id')
+            rule_meta = self.ai_rules.get(rid, {}) if isinstance(self.ai_rules, dict) else {}
+            canonical_rid = rule_meta.get('rule_id') or rid
+
             original_sentence = sentence_map.get(sentence_id, "")
             corrected_sentence = corrections.get(sentence_id, original_sentence)
 
             has_correction = sentence_id in corrections
-            logger.info(f"    #{i+1}: {detection['rule_id']} @ {sentence_id} - Correction: {'✓' if has_correction else '✗'}")
+            logger.info(f"    #{i+1}: {rid} → {canonical_rid} @ {sentence_id} - Correction: {'✓' if has_correction else '✗'}")
 
             violations.append(StyleViolation(
-                rule_id=detection['rule_id'],
+                rule_id=canonical_rid,
                 component=detection['component'],
                 rule_description=detection['rule_description'],
                 sentence_id=sentence_id,
@@ -1505,7 +1762,7 @@ TASK:
                                 },
                                 "rule_id": {
                                     "type": "string",
-                                    "description": "Style rule ID (H01-H08, A01-A39, C01-C33)"
+                                    "description": "Style rule ID (e.g., H01-H99, A01-A99, C01-C99)"
                                 },
                                 "component": {
                                     "type": "string",
@@ -1756,7 +2013,27 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
                 if ctx:
                     date_context = ctx + "\n\n"
 
-        content = f"{date_context}**SENTENCES TO CORRECT:**\n\n"
+        # 로컬 약어 도입쌍 탐지(현재 교정 요청 범위 내)
+        try:
+            local_pairs = self._detect_local_acronym_pairs({sid: sentences_to_correct[sid] for sid in sorted(sentences_to_correct.keys())})
+        except Exception:
+            local_pairs = []
+
+        acronym_block = ""
+        if local_pairs:
+            lines = [
+                "ACRONYM CONTEXT (within this request):",
+                "- Do NOT modify the sentences listed as 'First' below; keep the exact 'Long Form (ACRONYM)'.",
+                "- Only shorten repeated long forms in later sentences to the acronym.",
+                "- Preserve plurality exactly as first introduced: use the acronym exactly as shown in 'First'.",
+            ]
+            for p in local_pairs[:8]:
+                lines.append(
+                    f"- First: [{p['sentence_id']}] {p['long_form']} ({p['acronym']}) → later sentences must use {p['acronym']} only"
+                )
+            acronym_block = "\n" + "\n".join(lines) + "\n\n"
+
+        content = f"{date_context}{acronym_block}**SENTENCES TO CORRECT:**\n\n"
 
         for sid in sorted(sentences_to_correct.keys()):
             original = sentences_to_correct[sid]
@@ -1898,11 +2175,58 @@ TITLE:
             logger.error(f"Response 파싱 실패: {str(e)}")
             return {'violations': [], 'error': str(e)}
 
+    def _build_local_acronym_enforcement_map(
+        self,
+        numbered_sentences: Dict[str, List[str]]
+    ) -> Dict[str, List[tuple]]:
+        """현재 요청 범위(BODY)에서 첫 도입 이후 문장에 적용할 치환 규칙을 생성.
+
+        Returns: { 'B2': [(regex, repl), ...], ... }
+        """
+        import re as _re
+        body_sents = {f"B{i+1}": s for i, s in enumerate(numbered_sentences.get('body', []) or [])}
+        if not body_sents:
+            return {}
+        pairs = self._detect_local_acronym_pairs(body_sents)
+        if not pairs:
+            return {}
+
+        def sid_index(sid: str) -> int:
+            try:
+                return int(sid[1:])
+            except Exception:
+                return 10**9
+
+        rules: Dict[str, List[tuple]] = {}
+        for p in pairs:
+            first_sid = p['sentence_id']
+            long_form = p['long_form']
+            display = p['acronym']
+            if not long_form or not display:
+                continue
+            first_idx = sid_index(first_sid)
+
+            # 패턴: long (ACRO) → ACRO, ACRO (long) → ACRO, long → ACRO (대소문자 무시)
+            pat_long_acro = _re.compile(rf"(?<!\w){_re.escape(long_form)}\s*\(\s*{_re.escape(display)}\s*\)", _re.IGNORECASE)
+            pat_acro_long = _re.compile(rf"(?<!\w){_re.escape(display)}\s*\(\s*{_re.escape(long_form)}\s*\)", _re.IGNORECASE)
+            pat_long_only = _re.compile(rf"(?<!\w){_re.escape(long_form)}(?!\w)", _re.IGNORECASE)
+
+            for sid in body_sents.keys():
+                if sid_index(sid) <= first_idx:
+                    continue
+                rules.setdefault(sid, []).extend([
+                    (pat_long_acro, display),
+                    (pat_acro_long, display),
+                    (pat_long_only, display),
+                ])
+        return rules
+
     def _apply_corrections(
         self,
         components: Dict[str, str],
         numbered_sentences: Dict[str, List[str]],
-        violations: List[StyleViolation]
+        violations: List[StyleViolation],
+        local_acronym_enforcement: Optional[Dict[str, List[tuple]]] = None,
     ) -> Dict[str, str]:
         """문장 교체 및 컴포넌트 재구성 (원문 줄바꿈/공백 유지)
 
@@ -1942,6 +2266,13 @@ TITLE:
                 # 교정문 적용 여부
                 sid = f"{prefix}{idx}"
                 corrected = corrected_by_sid.get(sid, sent)
+                # 로컬 약어 치환 규칙 적용 (BODY에 한정)
+                if local_acronym_enforcement and prefix == 'B':
+                    for pat, repl in local_acronym_enforcement.get(sid, []) or []:
+                        try:
+                            corrected = pat.sub(repl, corrected)
+                        except Exception:
+                            pass
                 result_parts.append(corrected)
                 pos = found + len(sent)
             # 남은 꼬리 공백/개행 보존

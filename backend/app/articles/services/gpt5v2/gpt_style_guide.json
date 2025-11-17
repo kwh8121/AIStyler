@@ -8,7 +8,6 @@
       "H09",
       "H10",
       "H11",
-      "A13",
       "A14",
       "A25",
       "A31",
@@ -26,9 +25,9 @@
     "rules_by_component": {
       "headline": 9,
       "caption": 24,
-      "body": 33
+      "body": 35
     },
-    "last_updated": "2025-11-13T14:00:00.000000"
+    "last_updated": "2025-11-17T14:00:00.000000"
   },
   "rules": {
     "H01": {
@@ -159,11 +158,11 @@
       "rule_id": "H13",
       "component": "headline",
       "group": "Writing Principles",
-      "description": "Do not use periods in abbreviations within headlines. However, keep periods for two-letter country abbreviations such as U.S. and U.K.",
+      "description": "Do not use periods in abbreviations within headlines",
       "examples": [
         {
           "incorrect": "E.U. leaders agree on migration deal",
-          "correct": "EU leaders agree on migration deal"
+          "correct": "EU leaders agree on migration deal, US president meets EU leaders, UK economy shows steady recovery"
         }
       ]
     },
@@ -641,7 +640,7 @@
       "rule_id": "A11",
       "component": "body",
       "group": "Abbreviations",
-      "description": "Acronyms: When introducing an acronym, spell out the full term on the first reference, followed by the acronym in parentheses.",
+      "description": "Acronyms: When introducing an acronym, spell out the full term on the first reference, followed by the acronym in parentheses. For subsequent references within the same component (body/caption), use the acronym only. Do not re-introduce the long form or parentheses after the first reference.",
       "examples": [
         {
           "incorrect": "NASA launched a new mission.",
@@ -653,10 +652,22 @@
       "rule_id": "A12",
       "component": "body",
       "group": "Abbreviations",
-      "description": "Scientific Abbreviations: Scientific writing allows the use of certain abbreviations, but for clarity, the spelling can be specified in the first reference.",
+      "description": "For clarity, the first reference may include the spelled-out term along with the abbreviation in parentheses (e.g., DNA (deoxyribonucleic acid)). After the first reference within the same component (body/caption), use only the abbreviation and do not re-introduce parentheses.",
       "examples": [
         {
           "correct": "DNA (deoxyribonucleic acid) is a complex molecule."
+        }
+      ]
+    },
+    "A13": {
+      "rule_id": "A13",
+      "component": "body",
+      "group": "Grammar Rules",
+      "description": "Numbers under 10 must be spelled out. Make explicit that numbers 10 and above, including those representing age, time, measurements, and percentages, must always be numerals.",
+      "examples": [
+        {
+          "incorrect": "5 employees and twelve clients attended. Nearly 3 in 10 voters supported the plan. Almost 4 people agreed. About 2 out of 12 cases were confirmed.",
+          "correct": "Five employees and 12 clients attended. Nearly three in 10 voters supported the plan. Almost four people agreed. About two out of 12 cases were confirmed."
         }
       ]
     },
@@ -712,22 +723,35 @@
       "rule_id": "A19",
       "component": "body",
       "group": "Quotation Marks",
-      "description": "Quotations and Attribution: Use double quotation marks for direct quotes. Place commas and periods inside the quotation marks.",
+      "description": "Direct speech must use double quotation marks. After a reporting verb (e.g., said, told, added, announced, explained, noted, warned, wrote), place a comma before the opening quote, capitalize the first word in the quotation, and keep commas/periods inside the closing quote. When a reporting verb is followed by a full clause without 'that' and the clause reflects the speaker's perspective (e.g., starts with a personal pronoun and a finite verb), rewrite as direct speech with quotes. Do not add quotes for clearly indirect speech (e.g., with 'that' or tense backshift).",
       "examples": [
         {
-          "incorrect": "\"The journey of a thousand miles begins with a single step\", Lao Tzu said.",
-          "correct": "\"The journey of a thousand miles begins with a single step,\" Lao Tzu said."
+          "incorrect": "He told staff we are falling behind., The journey of a thousand miles begins with a single step, Lao Tzu said.",
+          "correct": "He told staff, \"We are falling behind.\", \"The journey of a thousand miles begins with a single step,\" Lao Tzu said."
         }
       ]
     },
     "A20": {
       "rule_id": "A20",
       "component": "body",
-      "group": "Grammar Rules",
-      "description": "Punctuation and Grammar: Use the serial comma in lists of items.",
+      "group": "Punctuation and Grammar",
+      "description": "This rule governs basic comma and semicolon usage. 1) **Serial Comma:** In lists of three or more items, always use a serial (Oxford) comma before the final conjunction. 2) **Complex Lists:** Use semicolons to separate items in a series if the items themselves contain internal commas.",
       "examples": [
         {
-          "correct": "She enjoys hiking, reading and painting."
+          "incorrect": "She enjoys hiking, reading and painting.",
+          "correct": "She enjoys hiking, reading, and painting."
+        }
+      ]
+    },
+    "A43": {
+      "rule_id": "A20",
+      "component": "body",
+      "group": "Punctuation and Grammar",
+      "description": "This rule mandates a semicolon before a coordinating conjunction (for, and, nor, but, or, yet, so) when the clauses being connected are complex. A clause is considered complex if it contains any internal commas. The trigger pattern is: `[...text with comma(s)...], <conjunction> [...text...]` OR `[...text...], <conjunction> [...text with comma(s)...]`. In these cases, the central comma connecting the clauses MUST be replaced with a semicolon to ensure readability.",
+      "examples": [
+        {
+          "incorrect": "The lead researcher, Dr. Aris Katzourakis, presented the initial findings, and the results were surprising to everyone in the audience.",
+          "correct": "The lead researcher, Dr. Aris Katzourakis, presented the initial findings; and the results were surprising to everyone in the audience."
         }
       ]
     },
@@ -762,8 +786,8 @@
       "description": "Explicitly instruct that if the event or action occurred within the current calendar year, omit the year.",
       "examples": [
         {
-          "incorrect": "BTS released their album Proof in 2024.",
-          "correct": "BTS released their album Proof in June."
+          "incorrect": "BTS released their album Proof in 2024. The company launched its new service in March 2025. The protest took place on July 14, 2025.",
+          "correct": "BTS released their album Proof in June. The company launched its new service in March. The protest took place on July 14."
         }
       ]
     },
@@ -827,14 +851,11 @@
       "rule_id": "A28",
       "component": "body",
       "group": "Number Notation",
-      "description": "Spell out numbers one to nine, except when directly preceding units (percent, million, degrees, etc.). Always use numerals from 10 upwards. The unit exception is critical to remember.",
+      "description": "Numbers 0–9 are spelled out. Even when paired with a larger number in statistical or ratio constructions (e.g., ‘x out of y’, ‘x in y’, ‘x-to-y’), keep numbers under 10 spelled out unless they appear immediately before a unit (percent, million/billion, degrees, age, time, dimensions, measurements). Use numerals for 10 and above.",
       "examples": [
         {
           "incorrect": "There are 5 apples.",
           "correct": "There are five apples."
-        },
-        {
-          "correct": "We expect a 5 percent increase."
         }
       ]
     },
