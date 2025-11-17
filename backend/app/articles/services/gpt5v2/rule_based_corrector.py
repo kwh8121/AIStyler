@@ -446,10 +446,6 @@ class RuleBasedCorrector:
         corrections = []
         corrected = text
 
-        # A13 - 10 이상 철자 금지
-        corrected, corr = self._apply_a13_spelled_numbers(corrected, 'body')
-        corrections.extend(corr)
-
         # A14 - % 기호 금지 → 'percent'
         corrected, corr = self._apply_a14_percent_symbol(corrected, 'body')
         corrections.extend(corr)
@@ -688,66 +684,6 @@ class RuleBasedCorrector:
             return corrected
 
         corrected = re.sub(pattern, replace_fn, text, flags=re.IGNORECASE)
-        return corrected, corrections
-
-    def _apply_a13_spelled_numbers(self, text: str, component: str) -> Tuple[str, List[Correction]]:
-        """A13 - 10 이상 철자 금지 → 숫자"""
-        corrections = []
-
-        # 1단계: 복합 숫자 패턴 먼저 처리 (twenty million → 20 million)
-        compound_pattern = r'\b(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)\s+(million|billion|trillion)\b'
-
-        compound_map = {
-            'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
-            'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
-            'eighteen': '18', 'nineteen': '19', 'twenty': '20', 'thirty': '30',
-            'forty': '40', 'fifty': '50', 'sixty': '60', 'seventy': '70',
-            'eighty': '80', 'ninety': '90'
-        }
-
-        def compound_replace_fn(match):
-            number_word = match.group(1).lower()
-            unit_word = match.group(2).lower()
-            original = match.group(0)
-            corrected = f"{compound_map[number_word]} {unit_word}"
-            corrections.append(Correction(
-                rule_id='A13',
-                component=component,
-                original=original,
-                corrected=corrected,
-                position=match.start()
-            ))
-            return corrected
-
-        corrected = re.sub(compound_pattern, compound_replace_fn, text, flags=re.IGNORECASE)
-
-        # 2단계: 단순 숫자만 변환 (million/billion/trillion 제외)
-        simple_number_words = {
-            'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
-            'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
-            'eighteen': '18', 'nineteen': '19', 'twenty': '20', 'thirty': '30',
-            'forty': '40', 'fifty': '50', 'sixty': '60', 'seventy': '70',
-            'eighty': '80', 'ninety': '90', 'hundred': '100', 'thousand': '1,000'
-        }
-
-        pattern = r'\b(' + '|'.join(simple_number_words.keys()) + r')\b'
-
-        def replace_fn(match):
-            word = match.group(1).lower()
-            if word in simple_number_words:
-                original = match.group(0)
-                corrected_num = simple_number_words[word]
-                corrections.append(Correction(
-                    rule_id='A13',
-                    component=component,
-                    original=original,
-                    corrected=corrected_num,
-                    position=match.start()
-                ))
-                return corrected_num
-            return match.group(0)
-
-        corrected = re.sub(pattern, replace_fn, corrected, flags=re.IGNORECASE)
         return corrected, corrections
 
     def _apply_a14_percent_symbol(self, text: str, component: str) -> Tuple[str, List[Correction]]:

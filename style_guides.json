@@ -785,14 +785,12 @@
     {
       "category": "headlines",
       "number": 13,
-      "content": [
-        "Do not use periods in abbreviations within headlines. However, keep periods for two-letter country abbreviations such as U.S. and U.K."
-      ],
+      "content": ["Do not use periods in abbreviations within headlines."],
       "examples": {
         "correct": [
           "EU leaders agree on migration deal",
-          "U.S. president meets EU leaders",
-          "U.K. economy shows steady recovery"
+          "US president meets EU leaders",
+          "UK economy shows steady recovery"
         ],
         "incorrect": ["E.U. leaders agree on migration deal"]
       }
