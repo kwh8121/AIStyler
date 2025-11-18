@@ -7,6 +7,7 @@ OpenAI API를 사용한 텍스트 번역 기능 제공
 동일한 인터페이스(translate_text, translate_to_en)를 OpenAI 기반으로 제공합니다.
 """
 
+from openai import AsyncOpenAI
 import asyncio
 import json
 import logging
@@ -28,6 +29,7 @@ except Exception:
     deepl = None
 
 _deepl_client: Optional["deepl.DeepLClient"] = None
+async_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 def get_deepl_client() -> Optional["deepl.DeepLClient"]:
     """DeepL 클라이언트를 가져오거나 생성 (필요 시)"""
@@ -88,6 +90,21 @@ def _load_translation_guidelines_text() -> Optional[str]:
         logger.debug(f"Failed to load translation_style.json: {exc}")
         _guidelines_text = None
         return _guidelines_text
+
+def _env_float(name: str, default: float | None) -> float | None:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "y")
 
 def _dump_translation_prompt(kind: str, prompt_text: str, metadata: Optional[dict] = None) -> None:
     """Persist translation prompts to disk when debugging is enabled.
@@ -182,6 +199,38 @@ def _is_probably_english(text: str) -> bool:
     # 영문자 최소 1자 이상이고, 전체의 90% 이상이 ASCII면 영어로 판단
     return alpha > 0 and allowed / max(total, 1) >= 0.9
 
+async def _responses_create_async(*, model: str, input_blocks: list, tools: list, tool_choice: str | None,
+                                      temperature: float | None, top_p: float | None,
+                                      include_reasoning: bool, reasoning_effort: str | None,
+                                      text_verbosity: str | None):
+
+        params: dict = {
+            "model": model,
+            "input": input_blocks,
+            "tools": tools,
+        }
+        if tool_choice:
+            params["tool_choice"] = tool_choice
+        if temperature:
+            params["temperature"] = temperature
+        if top_p:
+            params["top_p"] = top_p
+        if include_reasoning and reasoning_effort:
+            params["reasoning"] = {"effort": reasoning_effort}
+        if text_verbosity:
+            params["text"] = {"verbosity": text_verbosity}
+
+        try:
+            return await async_client.responses.create(**params)
+        except Exception as e:
+            # Fallback: remove optional fields (reasoning/text) and retry once
+            params.pop("reasoning", None)
+            params.pop("text", None)
+            try:
+                return await async_client.responses.create(**params)
+            except Exception:
+                raise
+
 async def _openai_translate(
     text: str,
     target_lang: str,
@@ -190,15 +239,6 @@ async def _openai_translate(
 
     Returns: (translated_text, detected_source_lang)
     """
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    # system_text = (
-    #     "You are a precise translator for Korean and English. "
-    #     "Input text will be either Korean or English. "
-    #     "Detect the source language and translate to US English (EN-US) only. "
-    # )
-
     system_text = """
 You are a professional news translator and editor for The Korea Times.
 
@@ -276,7 +316,6 @@ Source article:
     user_instruction = "Target language: EN-US"
 
     t0 = time.time()
-    # Dump prompts for debugging (system + user+text)
     try:
         _dump_translation_prompt(
             "system",
@@ -319,21 +358,39 @@ Source article:
         }
     }]
 
-    response = await client.responses.create(
-        model="gpt-5-chat-latest",
-        # reasoning={"effort": "low"},
-        # text={"verbosity": "low"},
-        input=[
+    translate_model = os.getenv('TRANSLATE_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest'))
+    tool_choice = os.getenv('TRANSLATE_TOOL_CHOICE', 'required')
+    temp = _env_float('TRANSLATE_TEMPERATURE', None)
+    top_p = _env_float('TRANSLATE_TOP_P', None)
+    include_reasoning = _env_bool('TRANSLATE_INCLUDE_REASONING', False)
+    reasoning_effort = _env_float('TRANSLATE_REASONING_EFFORT', None)
+    text_verbosity = os.getenv('TRANSLATE_TEXT_VERBOSITY',  None)
+
+    input=[
+        {"role": "system", "content": system_text},
+        {"role": "user", "content": user_instruction},
+        {"role": "user", "content": text},
+    ],
+
+    response = await _responses_create_async(
+        model=translate_model,
+        input_blocks=[
             {"role": "system", "content": system_text},
             {"role": "user", "content": user_instruction},
             {"role": "user", "content": text},
         ],
         tools=tools,
-        tool_choice="required",
-        temperature=0.1
+        tool_choice=tool_choice,
+        temperature=temp,
+        top_p=top_p,
+        include_reasoning=include_reasoning,
+        reasoning_effort=reasoning_effort,
+        text_verbosity=text_verbosity,
     )
+
     elapsed = time.time() - t0
-    print("model and, reasoning: ", settings.OPENAI_MODEL, settings.OPENAI_REASONING_EFFORT)
+    logger.info("model and, reasoning: ", settings.OPENAI_MODEL, settings.OPENAI_REASONING_EFFORT)
+
     # 함수 호출 우선 파싱, 실패 시 텍스트 백업
     translated, detected = text, "UNKNOWN"
     func_found = False
@@ -395,8 +452,6 @@ async def _openai_translate_with_prompts(
     """
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
     # 스타일 가이드가 존재하면 시스템 프롬프트에 주입
     guidelines = _load_translation_guidelines_text()
     sys_text_final = system_text
@@ -447,19 +502,36 @@ async def _openai_translate_with_prompts(
         }
     }]
 
-    response = await client.responses.create(
-        model="gpt-5-chat-latest",
-        # reasoning={"effort": "low"},
-        # text={"verbosity": "low"},
-        input=[
+    translate_model = os.getenv('TRANSLATE_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest'))
+    tool_choice = os.getenv('TRANSLATE_TOOL_CHOICE', 'required')
+    temp = _env_float('TRANSLATE_TEMPERATURE', None)
+    top_p = _env_float('TRANSLATE_TOP_P', None)
+    include_reasoning = _env_bool('TRANSLATE_INCLUDE_REASONING', False)
+    reasoning_effort = _env_float('TRANSLATE_REASONING_EFFORT', None)
+    text_verbosity = os.getenv('TRANSLATE_TEXT_VERBOSITY',  None)
+
+    input=[
+        {"role": "system", "content": sys_text_final},
+        {"role": "user", "content": user_instruction},
+        {"role": "user", "content": text},
+    ],
+
+    response = await _responses_create_async(
+        model=translate_model,
+        input_blocks=[
             {"role": "system", "content": sys_text_final},
             {"role": "user", "content": user_instruction},
             {"role": "user", "content": text},
         ],
         tools=tools,
-        tool_choice="required",
-        temperature=0.1
+        tool_choice=tool_choice,
+        temperature=temp,
+        top_p=top_p,
+        include_reasoning=include_reasoning,
+        reasoning_effort=reasoning_effort,
+        text_verbosity=text_verbosity,
     )
+
     elapsed = time.time() - t0
 
     translated, detected = text, "UNKNOWN"
@@ -646,48 +718,23 @@ async def translate_title(
     - 설명/문장형 출력 금지, 불필요한 관사/군더더기 제거
     - 반환: (headline_en, detected_source_lang, target_lang)
     """
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     # 스타일 결정: faithful(기본) | headline
-    style = (style or os.getenv("HEADLINE_TRANSLATION_MODE", "faithful")).strip().lower()
-    if style not in {"faithful", "headline"}:
-        style = "faithful"
-
-    if style == "faithful":
-        # Faithful one-line translation with strict preservation of propositions/relations
-        system_text = (
-            "You are a translator for The Korea Times. "
-            "Translate the given Korean headline into exactly one single-line English sentence, preserving all meaning. "
-            "Output only the translated sentence (one line), with no explanations.\n"
-            "Preserve strictly:\n"
-            "- Every proposition and clause (who did what; who said what; quoted phrases; reasons; contrasts).\n"
-            "- Reporting verbs without generalizing: prefer 'say/says' or 'describe (oneself) as' unless the source explicitly uses a joking verb.\n"
-            "- Contrast markers such as 'while/as' and causal wording such as 'saying (that) …'.\n"
-            "- Quoted wording verbatim; do not compress or paraphrase quotes (e.g., keep ‘just guys who make cars and phones’, not ‘car and phone guys’).\n"
-            "- Proper nouns and numbers exactly (e.g., Lee Jae-yong, Chung Euisun, Jensen Huang; numerals).\n"
-            "Avoid:\n"
-            "- Adding background or speculation.\n"
-            "- Summarizing or compressing distinct ideas into one generic verb.\n"
-            "- Ellipses; write full clauses instead."
-        )
-    else:
-        # AP-style headline prompt (user-requested, refined for precision and efficiency)
-        system_text = (
-            "Note: You are a veteran journalist with 20 years of experience. "
-            "Based on the provided information, write an AP-style English headline. "
-            "Do not start the headline with the date. Do not alter the meaning or add any content. "
-            "Output only the headline in English, one line, with no explanations.\n"
-            "Enforce strictly:\n"
-            "- Use numerals for numbers (e.g., 2, 10).\n"
-            "- Use single quotes for quoted phrases/titles.\n"
-            "- Prefer present tense for statements (e.g., says).\n"
-            "- Downstyle capitalization (capitalize proper nouns; avoid Title Case).\n"
-            "- Omit unnecessary articles unless needed for clarity.\n"
-            "- No ellipses; prefer comma/colon over verbose connectors.\n"
-            "- No trailing period.\n"
-        )
+    system_text = (
+        "You are a translator for The Korea Times. "
+        "Translate the given Korean headline into exactly one single-line English sentence, preserving all meaning. "
+        "Output only the translated sentence (one line), with no explanations.\n"
+        "Preserve strictly:\n"
+        "- Every proposition and clause (who did what; who said what; quoted phrases; reasons; contrasts).\n"
+        "- Reporting verbs without generalizing: prefer 'say/says' or 'describe (oneself) as' unless the source explicitly uses a joking verb.\n"
+        "- Contrast markers such as 'while/as' and causal wording such as 'saying (that) …'.\n"
+        "- Quoted wording verbatim; do not compress or paraphrase quotes (e.g., keep ‘just guys who make cars and phones’, not ‘car and phone guys’).\n"
+        "- Proper nouns and numbers exactly (e.g., Lee Jae-yong, Chung Euisun, Jensen Huang; numerals).\n"
+        "Avoid:\n"
+        "- Adding background or speculation.\n"
+        "- Summarizing or compressing distinct ideas into one generic verb.\n"
+        "- Ellipses; write full clauses instead."
+    )
 
     tools = [{
         "type": "function",
@@ -715,17 +762,35 @@ async def translate_title(
     try:
         import time as _time
         _t0 = _time.time()
-        resp = await client.responses.create(
-            model="gpt-5-chat-latest",
-            input=[
+
+        input=[
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": text},
+        ],
+
+        translate_model = os.getenv('TRANSLATE_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest'))
+        tool_choice = os.getenv('TRANSLATE_TOOL_CHOICE', 'required')
+        temp = _env_float('TRANSLATE_TEMPERATURE', None)
+        top_p = _env_float('TRANSLATE_TOP_P', None)
+        include_reasoning = _env_bool('TRANSLATE_INCLUDE_REASONING', False)
+        reasoning_effort = _env_float('TRANSLATE_REASONING_EFFORT', None)
+        text_verbosity = os.getenv('TRANSLATE_TEXT_VERBOSITY',  None)
+
+        resp = await _responses_create_async(
+            model=translate_model,
+            input_blocks=[
                 {"role": "system", "content": system_text},
                 {"role": "user", "content": text},
             ],
             tools=tools,
-            tool_choice="required",
-            temperature=0.2,
-            top_p=0.2,
+            tool_choice=tool_choice,
+            temperature=temp,
+            top_p=top_p,
+            include_reasoning=include_reasoning,
+            reasoning_effort=reasoning_effort,
+            text_verbosity=text_verbosity,
         )
+        
         _elapsed = _time.time() - _t0
         try:
             logger.info(f"[headline] OpenAI responses.create ok in {_elapsed:.2f}s (mode={style})")
