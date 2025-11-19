@@ -2242,11 +2242,12 @@ RETURN FORMAT:
 - corrected_sentence: The COMPLETE sentence with ALL violations fixed
 
 IMPORTANT:
-- Apply ALL fixes to each sentence
-- Return the complete corrected sentence, not fragments
-- Make minimal changes (only fix the violations)
-- Use the provided examples: when a rule includes '✗ Incorrect'/'✓ Correct', rewrite to match the '✓ Correct' pattern
-- If multiple rewrites are possible, choose the minimal edit that matches the example"""
+- Apply ALL fixes to each sentence based on the detected violations.
+- Return the complete corrected sentence, not fragments.
+- Make minimal changes (only fix the violations).
+- **CRITICAL:** Preserve the original information and meaning of the input sentence. Do NOT replace the input content with the example content.
+- **HOW TO USE EXAMPLES:** Use the provided examples only to understand the **correction pattern/logic**. Apply that logic to the input sentence. 
+- **EXCEPTION:** Only replace the sentence exactly with the example output IF AND ONLY IF the input sentence is identical to the example's 'Incorrect' sentence."""
 
         if extra:
             instructions += f"\n\nADDITIONAL INSTRUCTION (apply strictly): {extra}"
@@ -2424,9 +2425,9 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
 
         task_lines = [
             "**TASK:**",
-            "1. For each sentence, apply ALL the violation fixes according to the rule descriptions and examples above.",
+            "1. For each sentence, apply ALL the violation fixes according to the rule descriptions.",
             "2. Return the FULLY CORRECTED sentence with all violations fixed.",
-            "3. Follow the '✓ Correct' examples exactly when available; choose the minimal edit that matches the example",
+            "3. **Constraint:** Apply the style pattern from the '✓ Correct' examples, but **keep the specific words and details of the input sentence.** Do not copy the example text.",
         ]
         if is_caption:
             task_lines.append("4. CAPTION-SPECIFIC: Do not introduce a subject or verb; noun-phrase captions are acceptable. Preserve the original structure (phrase vs full sentence).")
