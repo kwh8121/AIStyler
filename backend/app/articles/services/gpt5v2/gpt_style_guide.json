@@ -154,8 +154,8 @@
         }
       ]
     },
-    "H13": {
-      "rule_id": "H13",
+    "H12": {
+      "rule_id": "H12",
       "component": "headline",
       "group": "Writing Principles",
       "description": "**No Periods in Abbreviations (Headline Style):** Strictly remove periods from all acronyms and abbreviations in headlines to save space. \n\n**Specific Targets:** \n- Change 'U.S.' to 'US'\n- Change 'U.K.' to 'UK'\n- Change 'U.N.' to 'UN'\n- Change 'E.U.' to 'EU'\n\nThis rule overrides standard grammar constraints found in body text.",

@@ -784,7 +784,7 @@
     },
     {
       "category": "headlines",
-      "number": 13,
+      "number": 12,
       "content": ["Do not use periods in abbreviations within headlines."],
       "examples": {
         "correct": [
