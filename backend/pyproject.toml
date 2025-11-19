@@ -28,6 +28,7 @@ dependencies = [
     "openai>=1.107.1",
     "pysbd>=0.3.4",
     "nltk>=3.9.2",
+    "google-genai>=1.50.1",
 ]
 
 [dependency-groups]

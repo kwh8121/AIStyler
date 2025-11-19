@@ -158,11 +158,15 @@
       "rule_id": "H13",
       "component": "headline",
       "group": "Writing Principles",
-      "description": "Do not use periods in abbreviations within headlines",
+      "description": "**No Periods in Abbreviations (Headline Style):** Strictly remove periods from all acronyms and abbreviations in headlines to save space. \n\n**Specific Targets:** \n- Change 'U.S.' to 'US'\n- Change 'U.K.' to 'UK'\n- Change 'U.N.' to 'UN'\n- Change 'E.U.' to 'EU'\n\nThis rule overrides standard grammar constraints found in body text.",
       "examples": [
         {
-          "incorrect": "E.U. leaders agree on migration deal",
-          "correct": "EU leaders agree on migration deal, US president meets EU leaders, UK economy shows steady recovery"
+          "incorrect": "U.S. president meets E.U. leaders to discuss U.K. trade deal",
+          "correct": "US president meets EU leaders to discuss UK trade deal"
+        },
+        {
+          "incorrect": "Korea-U.S. agreement on investment package does not require parliamentary ratification: industry Minister",
+          "correct": "Korea-US agreement on investment package does not require parliamentary ratification: industry Minister"
         }
       ]
     },
@@ -253,8 +257,8 @@
       "description": "If a sentence contains an absolute date, use the Date context (within 7 days, KST) shown in the prompt as the only basis for conversion. If the referenced date appears on the past side of that context, rewrite as ‘last <weekday>’. If it appears on the future side, rewrite as ‘<weekday>’. If it does not appear in the context (older than 7 days in the past or beyond 7 days in the future), keep ‘Month Day[, Year]’ and omit the weekday. If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input. When ambiguous, do not convert.",
       "examples": [
         {
-          "incorrect": "The fire broke out, Nov. 3.",
-          "correct": "The fire broke out last Monday."
+          "incorrect": "The fire broke out, Nov. 3. [article date: 2025.11.10]",
+          "correct": "The fire broke out last Monday. [article date: 2025.11.10]"
         },
         {
           "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
@@ -282,11 +286,11 @@
       "rule_id": "C08",
       "component": "caption",
       "group": "Person Description",
-      "description": "Korean President: Do not include their location in the photo. Foreign Leaders: Always indicate the location.",
+      "description": "**Country Specification for Leaders:**\n1. **South Korean President:** NEVER use 'South Korean' or 'Korea'. Start directly with 'President [Name]'.\n2. **Foreign Leaders:** MUST specify the country name before the title (e.g., 'U.S. President', 'Japanese Prime Minister').\n**Strict Enforcement:** This applies even to well-known leaders (like Trump, Biden, Xi) and regardless of whether the name appears at the start or middle of the sentence.",
       "examples": [
         {
-          "incorrect": "President Yoon Suk-yeol, center, greets U.S. President Joe Biden, right, during the bilateral talks in Seoul.",
-          "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden, right, during the bilateral talks in Seoul."
+          "incorrect": "South Korean President Yoon Suk-yeol greets President Joe Biden at a summit in Seoul.",
+          "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden at a summit in Seoul."
         }
       ]
     },
@@ -306,11 +310,15 @@
       "rule_id": "C11",
       "component": "caption",
       "group": "Date Format",
-      "description": "For specific dates, use '... in Seoul, May 17, 2023' or '... in Seoul in this May 17, 2023 photo.' For month and year only, use '... in Seoul in May 2023' or '... in Seoul in this May 2023 photo.' Never use comma before month-year only.",
+      "description": "**Date Placement and Formatting:**\n1. **Mandatory Order (Location First):** The date MUST always follow the specific location/city. NEVER place the date before the location (e.g., avoid 'on March 7 at the court'). Move the date phrase to the end of the location phrase.\n2. **Specific Date Format:** When a specific day is present (Month + Day), use a comma after the location (e.g., '... in Seoul, May 17'). Remove 'on' before the date.\n3. **Month/Year Only Format:** If only the month/year are present, do NOT use a comma. Use the preposition 'in' (e.g., '... in Seoul in May 2023').",
       "examples": [
         {
           "incorrect": "Visitors walk through the exhibition hall in Seoul, May 2023.",
           "correct": "Visitors walk through the exhibition hall in Seoul in May 2023."
+        },
+        {
+          "incorrect": "People attend the event on May 17 in Seoul.",
+          "correct": "People attend the event in Seoul, May 17."
         }
       ]
     },
@@ -362,35 +370,17 @@
       "rule_id": "C19",
       "component": "caption",
       "group": "Sentence Structure & Credit Normalization",
-      "description": "Credit placement and normalization: (1) Sentential captions (with a finite verb): end the sentence with a period, then add the credit as a separate token — either 'Courtesy of [Company].' or an in‑house/agency token (e.g., 'Korea Times file.'). Do not use '/' in sentential captions. (2) Non‑sentential captions (noun phrases): do not introduce a verb. Place exactly one final credit using ' / ' (e.g., ' / Courtesy of [Company]' or ' / Korea Times file'). (3) Never put a period immediately before '/': replace '. /' with ' / '. (4) Canonicalize in‑house token: 'Korea Times photo' → 'Korea Times file'; never split as 'Korea Times / File'. (5) Exactly one final credit: never duplicate or combine credits; if multiple credits appear, keep only the appropriate single credit. (6) Do not combine 'Courtesy of ...' with any news‑agency or in‑house credit (e.g., 'Korea Times file').",
+      "description": "**Credit Formatting based on Sentence Structure:**\n1. **Full Sentence (Subject + Finite Verb):** End the sentence with a period. Add the credit as a separate sentence (e.g., '... in Seoul. Courtesy of Samsung.').\n2. **Noun Phrase (No Finite Verb):** Do NOT use a period. Separate the caption and credit with ' / ' (space slash space) (e.g., '... in Seoul / Courtesy of Samsung').\n\n**CRITICAL:** Do not confuse **participles** (words ending in -ing like 'starring', 'standing', 'holding') with finite verbs. 'Actor A starring in a movie' is a **Noun Phrase** (use slash). 'Actor A stars in a movie' is a **Sentence** (use period).",
       "examples": [
         {
-          "incorrect": "President Yoon Suk Yeol speaks at a research center of Samsung Electronics in Yongin, Gyeonggi Province, Monday / Courtesy of Samsung Electronics.",
-          "correct": "President Yoon Suk Yeol speaks at a research center of Samsung Electronics in Yongin, Gyeonggi Province, Monday. Courtesy of Samsung Electronics."
+          "incorrect": "President Yoon Suk Yeol speaks at a research center in Yongin, Monday / Courtesy of Samsung Electronics.",
+          "correct": "President Yoon Suk Yeol speaks at a research center in Yongin, Monday. Courtesy of Samsung Electronics.",
+          "rationale": "The text contains a finite verb ('speaks'), making it a full sentence. Use a period separator."
         },
         {
-          "incorrect": "A view of downtown Seoul is seen at night.",
-          "correct": "A view of downtown Seoul at night."
-        },
-        {
-          "incorrect": "A research center of Samsung Electronics. Courtesy of Samsung Electronics.",
-          "correct": "A research center of Samsung Electronics / Courtesy of Samsung Electronics"
-        },
-        {
-          "incorrect": "A research center of Samsung Electronics is seen. / Courtesy of Samsung Electronics",
-          "correct": "A research center of Samsung Electronics is seen / Courtesy of Samsung Electronics"
-        },
-        {
-          "incorrect": "A view of downtown Seoul during rush hour. Korea Times / File",
-          "correct": "A view of downtown Seoul during rush hour / Korea Times file"
-        },
-        {
-          "incorrect": "A view of downtown Seoul during rush hour / Korea Times file / Korea Times file.",
-          "correct": "A view of downtown Seoul during rush hour / Korea Times file"
-        },
-        {
-          "incorrect": "A new model is displayed at a showroom / Korea Times file. Courtesy of Hyundai Motor.",
-          "correct": "A new model is displayed at a showroom. Courtesy of Hyundai Motor."
+          "incorrect": "A view of downtown Seoul at night. Korea Times file",
+          "correct": "A view of downtown Seoul at night / Korea Times file",
+          "rationale": "This is a noun phrase (no verb). Use a slash separator."
         }
       ]
     },
@@ -535,24 +525,8 @@
       "description": "Use the Date context (within 7 days, KST) shown in the prompt as the only basis for conversion. If the referenced date appears on the past side of that context, rewrite as 'last <weekday>'. If it appears on the future side, rewrite as '<weekday>'. If it is not listed (older than 7 days in the past or beyond 7 days in the future), keep 'Month Day[, Year]' and omit the weekday. If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input. When ambiguous, do not convert.",
       "examples": [
         {
-          "incorrect": "The fire broke out, Nov. 3.",
-          "correct": "The fire broke out last Monday."
-        },
-        {
-          "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
-          "correct": "Protesters gather in front of the parliament in London, Oct. 21, 2025."
-        },
-        {
-          "incorrect": "She uploaded the video Nov. 12.",
-          "correct": "She uploaded the video last Wednesday."
-        },
-        {
-          "incorrect": "The memorial was held last Sunday.",
-          "correct": "The memorial was held Nov. 2."
-        },
-        {
-          "incorrect": "The conference was held Nov. 2",
-          "correct": "The conference was held Nov. 2"
+          "incorrect": "The fire broke out, Nov. 3.[article date: 2025.11.05], The conference was held Nov. 2[article date: 2025.11.17]",
+          "correct": "The fire broke out last Monday[article date: 2025.11.05]. Protesters gather in front of the parliament in London, Oct. 21, 2025. The conference was held Nov. 2[article date: 2025.11.17]"
         }
       ]
     },
@@ -735,7 +709,7 @@
       "rule_id": "A20",
       "component": "body",
       "group": "Punctuation and Grammar",
-      "description": "This rule governs basic comma and semicolon usage. 1) **Serial Comma:** In lists of three or more items, always use a serial (Oxford) comma before the final conjunction. 2) **Complex Lists:** Use semicolons to separate items in a series if the items themselves contain internal commas.",
+      "description": "**Serial Comma:** In lists of three or more items, always use a serial (Oxford) comma before the final conjunction.",
       "examples": [
         {
           "incorrect": "She enjoys hiking, reading and painting.",
@@ -744,14 +718,18 @@
       ]
     },
     "A43": {
-      "rule_id": "A20",
+      "rule_id": "A43",
       "component": "body",
       "group": "Punctuation and Grammar",
-      "description": "This rule mandates a semicolon before a coordinating conjunction (for, and, nor, but, or, yet, so) when the clauses being connected are complex. A clause is considered complex if it contains any internal commas. The trigger pattern is: `[...text with comma(s)...], <conjunction> [...text...]` OR `[...text...], <conjunction> [...text with comma(s)...]`. In these cases, the central comma connecting the clauses MUST be replaced with a semicolon to ensure readability.",
+      "description": "Semicolon with Conjunctions: When two independent clauses are joined by a coordinating conjunction (and, but, or, nor, for, so, yet), use a semicolon (;) before the conjunction IF either of the clauses contains an internal comma. This rule is strict: regardless of how simple the sentence seems, if there is a comma anywhere inside the first clause OR the second clause (e.g., after an introductory phrase), the connecting punctuation must be a semicolon.",
       "examples": [
         {
-          "incorrect": "The lead researcher, Dr. Aris Katzourakis, presented the initial findings, and the results were surprising to everyone in the audience.",
-          "correct": "The lead researcher, Dr. Aris Katzourakis, presented the initial findings; and the results were surprising to everyone in the audience."
+          "incorrect": "The lead researcher, Dr. Kim, presented the findings, and the results were surprising.",
+          "correct": "The lead researcher, Dr. Kim, presented the findings; and the results were surprising."
+        },
+        {
+          "incorrect": "Traditionally, gold surges, but this time, it fell.",
+          "correct": "Traditionally, gold surges; but this time, it fell."
         }
       ]
     },
@@ -786,8 +764,8 @@
       "description": "Explicitly instruct that if the event or action occurred within the current calendar year, omit the year.",
       "examples": [
         {
-          "incorrect": "BTS released their album Proof in 2024. The company launched its new service in March 2025. The protest took place on July 14, 2025.",
-          "correct": "BTS released their album Proof in June. The company launched its new service in March. The protest took place on July 14."
+          "incorrect": "BTS released their album Proof in 2024[this year: 2025]. The company launched its new service in March 2025. The protest took place on July 14, 2025.[[this year: 2025]",
+          "correct": "BTS released their album Proof in 2024. The company launched its new service in March. The protest took place on July 14."
         }
       ]
     },
@@ -947,14 +925,11 @@
       "rule_id": "A39",
       "component": "body",
       "group": "Grammar Rules",
-      "description": "Clearly indicate that the preferred structure is \"[Name] said,\" except when a long explanatory clause follows.",
+      "description": "Attribution Order Mandate: The format 'said [Speaker]' is a direct violation. The only correct order is '[Speaker] said.' A single exception exists: the inverted order ('said [Speaker]') is permitted ONLY IF it is immediately followed by a descriptive phrase that identifies the speaker (e.g., a title or affiliation). All other instances of 'said [Speaker]' must be corrected.",
       "examples": [
         {
-          "incorrect": "\"I'll appeal,\" said Trump.",
-          "correct": "\"I'll appeal,\" Trump said."
-        },
-        {
-          "correct": "\"I'll appeal,\" said Trump, who recently won Iowa."
+          "incorrect": "“This plan will not succeed,” said the official.; \"We will continue to invest,\" the Samsung vice chairman, Lee Jae-yong, said.; \"Quote,\" said the gate agent.;, \"Quote,\" said Park.;",
+          "correct": "“This plan will not succeed,” the official said.; “We will continue to invest,” said Lee Jae-yong, the Samsung vice chairman., \"Quote,\" the official said.; \"Quote,\" said Lee Jae-yong, the Samsung vice chairman."
         }
       ]
     },
@@ -974,11 +949,15 @@
       "rule_id": "A42",
       "component": "body",
       "group": "Grammar Rules",
-      "description": "Clearly instruct to avoid repeating titles like \"Chairman Lee\" in subsequent references; instead use \"the chairman\" or the surname alone.",
+      "description": "Subsequent-reference titles: After the first full mention of a person with a title (e.g., 'DPK Chairman Lee Jae-myung' or 'Lee Jae-myung, DPK Chairman'), avoid repeating the title on later mentions. Use the surname alone (preferred) or 'the <title>' when clarity requires it. Do not modify text inside quotation marks.",
       "examples": [
         {
-          "incorrect": "DPK Chairman Lee Sung-hee spoke. Later, Chairman Lee added...",
-          "correct": "DPK Chairman Lee Sung-hee spoke. Later, the chairman added..."
+          "incorrect": "DPK Chairman Lee Jae-myung spoke on Monday. Chairman Lee added that reforms will continue.",
+          "correct": "DPK Chairman Lee Jae-myung spoke on Monday. Lee added that reforms will continue."
+        },
+        {
+          "incorrect": "Samsung Electronics Chairman Lee Jae-yong attended the ceremony. The Chairman Lee later visited the plant.",
+          "correct": "Samsung Electronics Chairman Lee Jae-yong attended the ceremony. The chairman later visited the plant."
         }
       ]
     }

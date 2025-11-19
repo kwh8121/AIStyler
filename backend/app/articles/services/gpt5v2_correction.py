@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...config import settings
 from ...styleguides import service as style_guide_service
 from ..models import ArticleCategory, OperationType
-from .translation import translate_text, translate_title
+from .translation import translate_text, translate_title, _is_probably_english
 import re
 
 logger = logging.getLogger(__name__)
@@ -251,10 +251,14 @@ async def call_gpt5v2_correction_stream(
         yield json.dumps({"status": "translating", "message": "번역중..."}, ensure_ascii=False)
 
         t0 = time.time()
-        # 제목/SEO는 전용 단일 단계 헤드라인 번역 사용, 그 외는 일반 번역
+        # 제목/SEO: 입력이 이미 영어면 번역/재서술을 생략하여 원문을 그대로 사용
         if category in (ArticleCategory.TITLE, ArticleCategory.SEO):
-            logger.info("[gpt5v2] Using translate_title (single-pass) for headline/SEO")
-            before_en, source_lang, target_lang = await translate_title(text)
+            if _is_probably_english(text or ""):
+                logger.info("[gpt5v2] Headline appears to be English; skipping translate_title")
+                before_en, source_lang, target_lang = text, "EN", "EN-US"
+            else:
+                logger.info("[gpt5v2] Using translate_title (single-pass) for headline/SEO")
+                before_en, source_lang, target_lang = await translate_title(text)
         else:
             before_en, source_lang, target_lang = await translate_text(
                 text,

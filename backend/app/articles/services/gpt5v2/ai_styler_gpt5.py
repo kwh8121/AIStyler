@@ -59,10 +59,12 @@ class AIStylerGPT5Sentence:
             use_compressed_prompt: True to use hard prompt compression (default: False)
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.gemini_api_key = os.getenv('GEMINI_API_KEY')
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
         
         self.client = OpenAI(api_key=self.api_key)
+        self.gclient = OpenAI(api_key=self.gemini_api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
         self.async_client = AsyncOpenAI(api_key=self.api_key)  # 병렬 호출용
 
         self.reasoning_effort = reasoning_effort
@@ -77,6 +79,18 @@ class AIStylerGPT5Sentence:
         logger.info(f"  Reasoning effort: {reasoning_effort}, Text verbosity: {text_verbosity}, Compressed prompt: {use_compressed_prompt}")
 
     # --- OpenAI call helpers (env‑driven, with graceful fallback) ---
+    def _use_gemini(self, model: Optional[str] = None) -> bool:
+        """Gemini 사용 여부 플래그.
+
+        - 환경변수 GEMINI_USE 가 true 이면 사용
+        - 또는 모델명이 'gemini-' 로 시작하면 사용
+        """
+        try:
+            flag = str(os.getenv('GEMINI_USE', 'false')).strip().lower() in ("1", "true", "yes", "y")
+        except Exception:
+            flag = False
+        m = (model or os.getenv('OPENAI_MODEL') or '').strip().lower()
+        return flag or m.startswith('gemini-')
     def _env_float(self, name: str, default: float | None) -> float | None:
         val = os.getenv(name)
         if val is None:
@@ -96,6 +110,26 @@ class AIStylerGPT5Sentence:
                                       temperature: float | None, top_p: float | None,
                                       include_reasoning: bool, reasoning_effort: str | None,
                                       text_verbosity: str | None):
+        # Gemini 경로는 chat.completions로 처리
+        if self._use_gemini(model):
+            try:
+                return self.gclient.chat.completions.create(
+                    model=(model or 'gemini-2.5-flash'),
+                    messages=input_blocks,
+                    tools=tools,
+                    tool_choice=(tool_choice or 'auto'),
+                    temperature=temperature,
+                    top_p=top_p,
+                )
+            except Exception as _:
+                # 간소 파라미터 재시도
+                return self.gclient.chat.completions.create(
+                    model=(model or 'gemini-2.5-flash'),
+                    messages=input_blocks,
+                    tools=tools,
+                    tool_choice=(tool_choice or 'auto'),
+                )
+        # OpenAI Responses 경로
         params: dict = {
             "model": model,
             "input": input_blocks,
@@ -103,9 +137,9 @@ class AIStylerGPT5Sentence:
         }
         if tool_choice:
             params["tool_choice"] = tool_choice
-        if temperature:
+        if temperature is not None:
             params["temperature"] = temperature
-        if top_p:
+        if top_p is not None:
             params["top_p"] = top_p
         if include_reasoning and reasoning_effort:
             params["reasoning"] = {"effort": reasoning_effort}
@@ -114,19 +148,34 @@ class AIStylerGPT5Sentence:
 
         try:
             return await self.async_client.responses.create(**params)
-        except Exception as e:
-            # Fallback: remove optional fields (reasoning/text) and retry once
+        except Exception:
             params.pop("reasoning", None)
             params.pop("text", None)
-            try:
-                return await self.async_client.responses.create(**params)
-            except Exception:
-                raise
+            return await self.async_client.responses.create(**params)
 
     def _responses_create_sync(self, *, model: str, input_blocks: list, tools: list, tool_choice: str | None,
                                 temperature: float | None, top_p: float | None,
                                 include_reasoning: bool, reasoning_effort: str | None,
                                 text_verbosity: str | None):
+        # Gemini 경로는 chat.completions로 처리 (sync)
+        if self._use_gemini(model):
+            try:
+                return self.gclient.chat.completions.create(
+                    model=(model or 'gemini-2.5-flash'),
+                    messages=input_blocks,
+                    tools=tools,
+                    tool_choice=(tool_choice or 'auto'),
+                    temperature=temperature,
+                    top_p=top_p,
+                )
+            except Exception:
+                return self.gclient.chat.completions.create(
+                    model=(model or 'gemini-2.5-flash'),
+                    messages=input_blocks,
+                    tools=tools,
+                    tool_choice=(tool_choice or 'auto'),
+                )
+
         params: dict = {
             "model": model,
             "input": input_blocks,
@@ -809,7 +858,19 @@ class AIStylerGPT5Sentence:
             local_enforce = self._build_local_acronym_enforcement_map(numbered_sentences)
         except Exception:
             local_enforce = None
-        corrected_components = self._apply_corrections(components, numbered_sentences, ai_violations, local_acronym_enforcement=local_enforce)
+        # 로컬 타이틀(A42) 강제 규칙 생성
+        try:
+            title_enforce = self._build_local_title_enforcement_map(numbered_sentences)
+        except Exception:
+            title_enforce = None
+
+        corrected_components = self._apply_corrections(
+            components,
+            numbered_sentences,
+            ai_violations,
+            local_acronym_enforcement=local_enforce,
+            local_title_enforcement=title_enforce,
+        )
 
         # 기사 재구성
         final_text = f"[TITLE]{corrected_components['title']}[/TITLE]"
@@ -845,6 +906,63 @@ class AIStylerGPT5Sentence:
             ))
 
         all_violations.extend(ai_violations)
+
+        # # Synthetic H03 logging (headline 'will' → 'to') if changed upstream
+        # try:
+        #     import re as _re
+        #     before_title = ''
+        #     try:
+        #         before_title = (components_before.get('title') or '')
+        #     except Exception:
+        #         before_title = ''
+        #     final_title = corrected_components.get('title', '')
+        #     bt = (self._split_sentences(before_title) or [before_title or ''])
+        #     ft = (self._split_sentences(final_title) or [final_title or ''])
+        #     if bt and ft:
+        #         o = bt[0].strip()
+        #         n = ft[0].strip()
+        #         cond = bool(_re.search(r"\bwill\s+\w+", o, _re.IGNORECASE)) and bool(_re.search(r"\bto\s+\w+", n, _re.IGNORECASE)) and (o != n)
+        #         already = any(getattr(v, 'rule_id', '') == 'H03' and getattr(v, 'sentence_id', '') == 'T1' for v in all_violations)
+        #         if cond and not already:
+        #             meta = self.ai_rules.get('H03', {}) if isinstance(self.ai_rules, dict) else {}
+        #             group = meta.get('group', 'Headline Style')
+        #             desc = meta.get('description', 'Prefer "to <verb>" over "will <verb>" in headlines.')
+        #             all_violations.append(StyleViolation(
+        #                 rule_id='H03',
+        #                 component='title',
+        #                 rule_description=desc,
+        #                 sentence_id='T1',
+        #                 original_sentence=o,
+        #                 corrected_sentence=n,
+        #                 violation_type=group,
+        #             ))
+        # except Exception:
+        #     pass
+
+        # 최종 문장 맵을 기반으로 corrected_sentence 보정 및 무효 위반 제거
+        try:
+            final_numbered, final_sentence_map = self._create_numbered_sentences(corrected_components)
+        except Exception:
+            final_sentence_map = {}
+
+        normalized: List[StyleViolation] = []
+        for v in all_violations:
+            # 최종 결과에서의 corrected 문장을 재취득 (가능하면)
+            try:
+                if v.sentence_id and v.sentence_id in final_sentence_map:
+                    v.corrected_sentence = final_sentence_map.get(v.sentence_id, v.corrected_sentence)
+            except Exception:
+                pass
+            # 교정 전/후가 동일하면 위반으로 간주하지 않음 (감지만 있고 수정 없음)
+            try:
+                before = (v.original_sentence or '').strip()
+                after = (v.corrected_sentence or '').strip()
+                if before and after and before == after:
+                    continue
+            except Exception:
+                pass
+            normalized.append(v)
+        all_violations = normalized
 
         stats = {
             'total_violations': len(all_violations),
@@ -894,6 +1012,12 @@ class AIStylerGPT5Sentence:
                 logger.info(f"  감지된 위반: {len(detections)}개")
         except Exception as exc:
             logger.debug(f"A11 augmentation skipped: {exc}")
+
+        # A42 보강
+        try:
+            detections = self._augment_detections_with_title(detections, numbered_sentences)
+        except Exception as exc:
+            logger.debug(f"A42 augmentation skipped: {exc}")
 
         # 로컬 약어 도입 문장에 잘못 부여된 A11 감지를 제거 (첫 도입 문장은 유지)
         try:
@@ -1009,7 +1133,13 @@ class AIStylerGPT5Sentence:
         article_date: Optional[str] = None
     ) -> List[Dict]:
         """단일 컴포넌트에 대해 비동기 Detection 수행 (병렬용)"""
-        await asyncio.sleep(5)
+        # 소폭 지연으로 호출 분산
+        try:
+            _d = float(os.getenv('OPENAI_DETECT_STAGGER_SEC', '0'))
+        except Exception:
+            _d = 0.0
+        if _d > 0:
+            await asyncio.sleep(_d)
 
         # 해당 컴포넌트의 규칙만 필터링
         if component_type == 'title':
@@ -1022,7 +1152,6 @@ class AIStylerGPT5Sentence:
         component_rules = {k: v for k, v in self.ai_rules.items() if k.startswith(prefix)}
 
         # 프롬프트 생성 (해당 컴포넌트 규칙만) - 압축 여부에 따라 선택
-        tools = self._build_detection_tools()
         if self.use_compressed_prompt:
             instructions = self._build_detection_instructions_for_component_compressed(component_type, component_rules)
         else:
@@ -1041,20 +1170,35 @@ class AIStylerGPT5Sentence:
             temp = self._env_float('OPENAI_DETECT_TEMPERATURE', None)
             top_p = self._env_float('OPENAI_DETECT_TOP_P', None)
             include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', False)
-            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  None)
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  "low")
 
             input_blocks = self._pack_prompt_blocks(instructions, input_content, for_correction=False)
-            response = await self._responses_create_async(
-                model=detect_model,
-                input_blocks=input_blocks,
-                tools=tools,
-                tool_choice=tool_choice,
-                temperature=temp,
-                top_p=top_p,
-                include_reasoning=include_reasoning,
-                reasoning_effort=self.reasoning_effort,
-                text_verbosity=text_verbosity,
-            )
+            if self._use_gemini(detect_model):
+                tools = self._build_detection_tools_gemini()
+                response = self.gclient.chat.completions.create(
+                    model=detect_model,
+                    messages=input_blocks,
+                    tools=tools,
+                    tool_choice=(tool_choice or 'auto'),
+                    temperature=temp,
+                    top_p=top_p,
+                )
+            else:
+                tools = self._build_detection_tools()
+                response = await self._responses_create_async(
+                    model=detect_model,
+                    input_blocks=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": input_content}
+                    ],
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=temp,
+                    top_p=top_p,
+                    include_reasoning=include_reasoning,
+                    reasoning_effort=self.reasoning_effort,
+                    text_verbosity=text_verbosity,
+                )
             # Dump prompts
             self._dump_prompt(
                 f"detect_instructions_{component_type}",
@@ -1068,11 +1212,31 @@ class AIStylerGPT5Sentence:
             )
 
             detections: List[Dict] = []
-            for item in response.output:
-                if item.type == "function_call" and item.name == "detect_style_violations":
-                    function_args = json.loads(item.arguments)
-                    detections = function_args.get('violations', [])
-                    break
+            if self._use_gemini(detect_model):
+                args = self._extract_chat_tool_args(response, 'detect_style_violations')
+                if args and isinstance(args, dict):
+                    detections = args.get('violations', []) or []
+                else:
+                    # fallback: try parse plain text JSON
+                    try:
+                        text = response.choices[0].message.content or ''
+                    except Exception:
+                        text = ''
+                    data = self._safe_parse_json(text)
+                    if data:
+                        detections = data.get('violations', []) or []
+            else:
+                for item in getattr(response, 'output', []) or []:
+                    if getattr(item, 'type', '') == "function_call" and getattr(item, 'name', '') == "detect_style_violations":
+                        function_args = json.loads(getattr(item, 'arguments', '{}') or '{}')
+                        detections = function_args.get('violations', [])
+                        break
+                # fallback: parse output_text
+                if not detections:
+                    text = self._extract_json_from_output_text(response)
+                    data = self._safe_parse_json(text)
+                    if data:
+                        detections = data.get('violations', []) or []
 
             return detections
 
@@ -1115,7 +1279,7 @@ class AIStylerGPT5Sentence:
             temp = self._env_float('OPENAI_DETECT_TEMPERATURE', self._env_float('GPT5_V2_DETECT_TEMPERATURE', 0.1))
             top_p = self._env_float('OPENAI_DETECT_TOP_P', self._env_float('GPT5_V2_DETECT_TOP_P', None))
             include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', self._env_bool('GPT5_V2_INCLUDE_REASONING', False))
-            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY', os.getenv('GPT5_V2_TEXT_VERBOSITY', None))
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY', "low")
 
             response = self._responses_create_sync(
                 model=detect_model,
@@ -1176,8 +1340,10 @@ class AIStylerGPT5Sentence:
         if component_type == 'title':
             special_focus = "\n⚡ **SPECIAL FOCUS FOR HEADLINES**: Pay close attention to H06 (omitting articles a/an/the), H01 (first letter capitalization), and H02 (avoiding ALL CAPS)."
         elif component_type == 'body':
-            # BODY 전용 특별 강조: A09 한국인 이름 순서
-            special_focus = ""
+            # BODY 전용 특별 강조: A09, A42 등 맥락 의존 규칙
+            special_focus = ("\n⚡ SPECIAL FOCUS (BODY):\n"
+                             "- A42 (Subsequent-reference titles): After the FIRST full mention of a person with a title (e.g., 'Finance Minister Koo Yun-cheol'), avoid repeating the title in LATER sentences; report as a violation and expect either the surname ('Koo') or 'the <title>' (e.g., 'the minister').\n"
+                             "- Do NOT modify text inside quotation marks.")
 
         # JSON 규칙 포맷팅 (그룹 정보 포함)
         rules_text = []
@@ -1186,18 +1352,23 @@ class AIStylerGPT5Sentence:
             group = rule_data.get('group', 'General')
             rule_text = f"**{rule_id} ({group})**: {rule_data['description']}"
 
-            # Few-shot 예제 추가 (첫 번째 예제만)
-            if rule_data.get('examples'):
-                example = rule_data['examples'][0]
-                rule_text += f"\n  ✗ Incorrect: '{example.get('incorrect', '')}'"
-                rule_text += f"\n  ✓ Correct: '{example.get('correct', '')}'"
+            # Few-shot 예제 추가 (최대 2개, comment 지원)
+            exs = (rule_data.get('examples') or [])[:2]
+            for ex in exs:
+                inc = ex.get('incorrect', '')
+                cor = ex.get('correct', '')
+                com = ex.get('comment', '')
+                rule_text += f"\n  ✗ Incorrect: '{inc}'"
+                rule_text += f"\n  ✓ Correct: '{cor}'"
+                if com:
+                    rule_text += f"\n  ⓘ Note: {com}"
 
             rules_text.append(rule_text)
 
         rules_section = '\n\n'.join(rules_text)
         extra = getattr(self, '_extra_instructions', None)
         instructions = f"""
-You are an expert copy editor for The Korea Times.
+You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Do not rewrite; just report structured violations.
 {special_focus}
 
 TASK: DETECT {display_name} style guide violations - BE THOROUGH AND ACCURATE.
@@ -1271,12 +1442,14 @@ Note: Only check against {display_name} rules ({rule_range}). Do not apply rules
                 # 명시적으로 Category를 제공하여 AI가 violation_type을 쉽게 찾도록 함
                 rule_text = f"  *   **{rule_id}: {description}**\n      *   **Category:** `{group_name}`"
 
-                # 예시는 항상 제공하는 것이 안정적임 (특히 복잡한 규칙의 경우)
-                if rule_data.get('examples'):
-                    example = rule_data['examples'][0]
+                # 예시는 항상 제공 (최대 2개, comment 지원)
+                for example in (rule_data.get('examples') or [])[:2]:
                     incorrect_ex = example.get('incorrect', '')
                     correct_ex = example.get('correct', '')
+                    comment_ex = example.get('comment', '')
                     rule_text += f"\n      *   **Incorrect:** `{incorrect_ex}`\n      *   **Correct:** `{correct_ex}`"
+                    if comment_ex:
+                        rule_text += f"\n      *   **Why:** {comment_ex}"
                 rule_texts.append(rule_text)
             
             section_content = f"### {i}. {group_name}\n\n" + "\n\n".join(rule_texts)
@@ -1366,7 +1539,7 @@ Note: Only check against {display_name} rules ({rule_range}). Do not apply rules
 
         # 압축된 포맷 (스키마 기반)
         extra = getattr(self, '_extra_instructions', None)
-        instructions = f"""Korea Times copy editor. Detect {display_name} violations ({rule_range}).
+        instructions = f"""You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Do not rewrite; just report structured violations. Detect {display_name} violations ({rule_range}).
 
 RULES ({rule_range}):{chr(10)}"""
 
@@ -1646,31 +1819,46 @@ TASK:
         if not sentences_to_correct:
             return {}
 
-        tools = self._build_correction_tools()
         input_content = self._build_correction_input(sentences_to_correct, component_detections, article_date)
         instructions = self._build_correction_instructions(component_type)
 
         try:
+
             # Async API 호출 (환경변수 기반 유연 파라미터)
             correct_model = os.getenv('OPENAI_CORRECT_MODEL', os.getenv('GPT5_V2_CORRECT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest')))
             tool_choice = os.getenv('OPENAI_TOOL_CHOICE', 'required')
             temp = self._env_float('OPENAI_CORRECT_TEMPERATURE', None)
             top_p = self._env_float('OPENAI_CORRECT_TOP_P', None)
             include_reasoning = self._env_bool('OPENAI_INCLUDE_REASONING', False)
-            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  None)
+            text_verbosity = os.getenv('OPENAI_TEXT_VERBOSITY',  "low")
 
             input_blocks = self._pack_prompt_blocks(instructions, input_content, for_correction=True)
-            response = await self._responses_create_async(
-                model=correct_model,
-                input_blocks=input_blocks,
-                tools=tools,
-                tool_choice=tool_choice,
-                temperature=temp,
-                top_p=top_p,
-                include_reasoning=include_reasoning,
-                reasoning_effort=self.reasoning_effort,
-                text_verbosity=text_verbosity,
-            )
+            if self._use_gemini(correct_model):
+                tools = self._build_correction_tools_gemini()
+                response = self.gclient.chat.completions.create(
+                    model=correct_model,
+                    messages=input_blocks,
+                    tools=tools,
+                    tool_choice=(tool_choice or 'auto'),
+                    temperature=temp,
+                    top_p=top_p,
+                )
+            else:
+                tools = self._build_correction_tools()
+                response = await self._responses_create_async(
+                    model=correct_model,
+                    input_blocks=[
+                        {"role": "system", "content": instructions},
+                        {"role": "user", "content": input_content}
+                    ],
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=temp,
+                    top_p=top_p,
+                    include_reasoning=include_reasoning,
+                    reasoning_effort=self.reasoning_effort,
+                    text_verbosity=text_verbosity,
+                )
             # Dump prompts
             self._dump_prompt(
                 f"correct_instructions_{component_type}",
@@ -1684,14 +1872,45 @@ TASK:
             )
 
             corrections = {}
-            for item in response.output:
-                if item.type == "function_call" and item.name == "correct_sentences":
-                    function_args = json.loads(item.arguments)
-                    correction_list = function_args.get('corrections', [])
-
-                    for c in correction_list:
-                        corrections[c['sentence_id']] = c['corrected_sentence']
-                    break
+            if self._use_gemini(correct_model):
+                args = self._extract_chat_tool_args(response, 'correct_sentences')
+                if args and isinstance(args, dict):
+                    for c in args.get('corrections', []) or []:
+                        sid = c.get('sentence_id')
+                        val = c.get('corrected_sentence')
+                        if sid and val is not None:
+                            corrections[sid] = val
+                else:
+                    # fallback: parse plain text JSON
+                    try:
+                        text = response.choices[0].message.content or ''
+                    except Exception:
+                        text = ''
+                    data = self._safe_parse_json(text)
+                    if data:
+                        for c in data.get('corrections', []) or []:
+                            sid = c.get('sentence_id')
+                            val = c.get('corrected_sentence')
+                            if sid and val is not None:
+                                corrections[sid] = val
+            else:
+                for item in getattr(response, 'output', []) or []:
+                    if getattr(item, 'type', '') == "function_call" and getattr(item, 'name', '') == "correct_sentences":
+                        function_args = json.loads(getattr(item, 'arguments', '{}') or '{}')
+                        correction_list = function_args.get('corrections', [])
+                        for c in correction_list:
+                            corrections[c['sentence_id']] = c['corrected_sentence']
+                        break
+                if not corrections:
+                    # fallback: output_text JSON 파싱
+                    text = self._extract_json_from_output_text(response)
+                    data = self._safe_parse_json(text)
+                    if data:
+                        for c in data.get('corrections', []) or []:
+                            sid = c.get('sentence_id')
+                            val = c.get('corrected_sentence')
+                            if sid and val is not None:
+                                corrections[sid] = val
 
             return corrections
 
@@ -1787,6 +2006,36 @@ TASK:
             }
         }]
 
+    def _build_detection_tools_gemini(self) -> List[Dict]:
+        """Gemini 전용 tools 포맷 (필요 필드만, 중복 옵션 제거)."""
+        return [{
+            "type": "function",
+            "function": {
+                "name": "detect_style_violations",
+                "description": "Detect Korea Times style guide violations and report sentence ID and rule ID only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "violations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "sentence_id": {"type": "string"},
+                                    "rule_id": {"type": "string"},
+                                    "component": {"type": "string"},
+                                    "rule_description": {"type": "string"},
+                                    "violation_type": {"type": "string"}
+                                },
+                                "required": ["sentence_id", "rule_id", "component", "rule_description", "violation_type"]
+                            }
+                        }
+                    },
+                    "required": ["violations"]
+                }
+            }
+        }]
+
     def _build_correction_tools(self) -> List[Dict]:
         """Correction용 Function calling tools (교정문만)"""
         extra = getattr(self, '_extra_instructions', None)
@@ -1826,67 +2075,155 @@ TASK:
             }
         }]
 
-    def _build_detection_instructions(self) -> str:
-        """Detection용 지시사항 (GPT-5) - 간소화 버전"""
+    def _build_correction_tools_gemini(self) -> List[Dict]:
+        """Gemini 전용 tools 포맷 (간소)."""
+        extra = getattr(self, '_extra_instructions', None)
+        desc = "Return corrected sentences for detected violations."
+        if extra:
+            desc += f" Additionally, follow this instruction strictly: {extra}"
+        return [{
+            "type": "function",
+            "function": {
+                "name": "correct_sentences",
+                "description": desc,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "corrections": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "sentence_id": {"type": "string"},
+                                    "corrected_sentence": {"type": "string"}
+                                },
+                                "required": ["sentence_id", "corrected_sentence"]
+                            }
+                        }
+                    },
+                    "required": ["corrections"]
+                }
+            }
+        }]
 
-        rules_by_component = {
-            'headline': [],
-            'body': [],
-            'caption': []
-        }
+    # --- Function call parsing helpers ---
+    def _extract_chat_tool_args(self, response_obj, func_name: str) -> Optional[dict]:
+        """Chat Completions 결과에서 특정 function call의 arguments(JSON 문자열)를 파싱."""
+        try:
+            choices = getattr(response_obj, 'choices', []) or []
+            if not choices:
+                return None
+            msg = getattr(choices[0], 'message', None)
+            if not msg:
+                return None
+            tool_calls = getattr(msg, 'tool_calls', []) or []
+            for tc in tool_calls:
+                f = getattr(tc, 'function', None)
+                if not f:
+                    continue
+                name = getattr(f, 'name', '')
+                if name == func_name:
+                    args = getattr(f, 'arguments', '') or ''
+                    try:
+                        return json.loads(args)
+                    except Exception:
+                        return None
+        except Exception:
+            return None
+        return None
 
-        for rule_id, rule_data in self.ai_rules.items():
-            component = rule_data['component']
-            if component == 'title':
-                component = 'headline'
+    def _extract_json_from_output_text(self, response_obj) -> str:
+        """Responses API output_text 모음."""
+        try:
+            collected = []
+            for item in getattr(response_obj, 'output', []) or []:
+                for content in getattr(item, 'content', []) or []:
+                    if getattr(content, 'type', '') == 'output_text':
+                        collected.append(getattr(content, 'text', '') or '')
+            return '\n'.join(collected).strip()
+        except Exception:
+            return ''
 
-            rule_text = f"**{rule_id}**: {rule_data['description']}"
+    def _safe_parse_json(self, text: str) -> Optional[dict]:
+        text = (text or '').strip()
+        if not text:
+            return None
+        # Try direct parse
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+        # Heuristic: extract the first {...} block
+        try:
+            start = text.find('{')
+            end = text.rfind('}')
+            if 0 <= start < end:
+                return json.loads(text[start:end+1])
+        except Exception:
+            return None
+        return None
 
-            # Few-shot 예제 추가
-            if rule_data.get('examples'):
-                example = rule_data['examples'][0]
-                rule_text += f"\n  ✗ Incorrect: '{example.get('incorrect', '')}'"
-                rule_text += f"\n  ✓ Correct: '{example.get('correct', '')}'"
+#     def _build_detection_instructions(self) -> str:
+#         """Detection용 지시사항 (GPT-5) - 간소화 버전"""
 
-            rules_by_component[component].append(rule_text)
+#         rules_by_component = {
+#             'headline': [],
+#             'body': [],
+#             'caption': []
+#         }
 
-        instructions = f"""You are an expert copy editor for the Korea Times.
+#         for rule_id, rule_data in self.ai_rules.items():
+#             component = rule_data['component']
+#             if component == 'title':
+#                 component = 'headline'
 
-TASK: DETECT style guide violations in the sentences below.**
+#             rule_text = f"**{rule_id}**: {rule_data['description']}"
 
-HEADLINE RULES (H01-H08) for Title sentences:
-{chr(10).join(rules_by_component['headline'])}
+#             # Few-shot 예제 추가
+#             if rule_data.get('examples'):
+#                 example = rule_data['examples'][0]
+#                 rule_text += f"\n  ✗ Incorrect: '{example.get('incorrect', '')}'"
+#                 rule_text += f"\n  ✓ Correct: '{example.get('correct', '')}'"
 
-BODY RULES (A01-A39) for Body sentences:
-{chr(10).join(rules_by_component['body'])}
+#             rules_by_component[component].append(rule_text)
 
-CAPTION RULES (C01-C33) for Caption sentences:
-{chr(10).join(rules_by_component['caption'])}
+#         instructions = f"""You are an expert copy editor for the Korea Times.
 
-INSTRUCTIONS:
+# TASK: DETECT style guide violations in the sentences below.**
 
-1. Review EVERY sentence carefully
-2. Check each sentence against ALL applicable style rules
-3. For each violation found, report:
-   - sentence_id (e.g., "B3")
-   - rule_id (e.g., "A08")
-   - component ("title", "body", or "caption")
-   - rule_description (brief explanation)
-   - violation_type (type of violation)
+# HEADLINE RULES (H01-H08) for Title sentences:
+# {chr(10).join(rules_by_component['headline'])}
 
-4. If one sentence has multiple violations, return multiple entries
-5. Focus on finding ALL violations (maximize recall)
-6. If no violations are found, return an empty array
+# BODY RULES (A01-A39) for Body sentences:
+# {chr(10).join(rules_by_component['body'])}
 
-Note: Title sentences use H rules, Body sentences use A rules, Caption sentences use C rules."""
+# CAPTION RULES (C01-C33) for Caption sentences:
+# {chr(10).join(rules_by_component['caption'])}
 
-        return instructions
+# INSTRUCTIONS:
+
+# 1. Review EVERY sentence carefully
+# 2. Check each sentence against ALL applicable style rules
+# 3. For each violation found, report:
+#    - sentence_id (e.g., "B3")
+#    - rule_id (e.g., "A08")
+#    - component ("title", "body", or "caption")
+#    - rule_description (brief explanation)
+#    - violation_type (type of violation)
+
+# 4. If one sentence has multiple violations, return multiple entries
+# 5. Focus on finding ALL violations (maximize recall)
+# 6. If no violations are found, return an empty array
+
+# Note: Title sentences use H rules, Body sentences use A rules, Caption sentences use C rules."""
+
+#         return instructions
 
     def _build_correction_instructions(self, component_type: str) -> str:
         """Correction용 지시사항 (GPT-5-mini)"""
         extra = getattr(self, '_extra_instructions', None)
 
-        instructions = """You are a copy editor for the Korea Times.
+        instructions = """You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Preserve meaning, facts, names, and numerals; make minimal edits.
 
 TASK: CORRECT the sentences that have violations
 
@@ -2033,7 +2370,25 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
                 )
             acronym_block = "\n" + "\n".join(lines) + "\n\n"
 
-        content = f"{date_context}{acronym_block}**SENTENCES TO CORRECT:**\n\n"
+        # 타이틀 컨텍스트 (A42) — 현재 교정 요청 범위 내 문장에서만 구성 (간결)
+        title_block = ""
+        try:
+            local_title_pairs = self._detect_local_title_pairs({sid: sentences_to_correct[sid] for sid in sorted(sentences_to_correct.keys())})
+        except Exception:
+            local_title_pairs = []
+        if local_title_pairs:
+            lines = [
+                "TITLE CONTEXT (A42, within this request):",
+                "- Do NOT change the 'First' line; keep the full 'Title + Name'.",
+                "- In later sentences, avoid repeating the title; use the surname (preferred) or 'the <title>'.",
+                "- Do NOT modify text inside quotation marks.",
+            ]
+            for t in local_title_pairs[:5]:
+                # 안내용으로 title은 소문자화하여 'the minister' 형태를 보여줌
+                lines.append(f"- First: [{t['sentence_id']}] {t['title']} {t['full_name']} → later: '{t['surname']}' or 'the {t['title'].lower()}'")
+            title_block = "\n" + "\n".join(lines) + "\n\n"
+
+        content = f"{date_context}{acronym_block}{title_block}**SENTENCES TO CORRECT:**\n\n"
 
         for sid in sorted(sentences_to_correct.keys()):
             original = sentences_to_correct[sid]
@@ -2048,11 +2403,12 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
                     rule_data = self.ai_rules[rule_id]
                     content += f"    - **{rule_id}**: {rule_data['description']}\n"
 
-                    # 예제 추가 (첫 번째 예제만)
-                    if rule_data.get('examples'):
-                        ex = rule_data['examples'][0]
+                    # 예제 추가 (최대 2개, comment 지원)
+                    for ex in (rule_data.get('examples') or [])[:2]:
                         content += f"      ✗ Incorrect: '{ex.get('incorrect', '')}'\n"
                         content += f"      ✓ Correct: '{ex.get('correct', '')}'\n"
+                        if ex.get('comment'):
+                            content += f"      ⓘ Note: {ex.get('comment', '')}\n"
                 else:
                     content += f"    - {rule_id}: (rule details not found)\n"
 
@@ -2221,12 +2577,183 @@ TITLE:
                 ])
         return rules
 
+    # === A42 helpers (inserted after acronym enforcement for locality) ===
+    def _detect_local_title_pairs(self, sentences_by_id: Dict[str, str]) -> List[Dict[str, str]]:
+        """BODY 내에서 '직함+이름' 또는 '이름, 직함' 첫 도입을 탐지.
+
+        Returns: [{ 'sentence_id', 'full_name', 'surname', 'title', 'mention_text' }]
+        """
+        import re as _re
+
+        # 대표 직함(필요 시 확장)
+        titles = (
+            r"Chairman|Chairwoman|Chairperson|Chair|CEO|President|Prime\s+Minister|Minister|Ambassador|Spokesperson|Professor|Mayor|Governor|Director|Commissioner|Chief|CIO|CTO|CFO|Representative|Rep\.|Senator|Sen\.|Secretary|Deputy|Vice|Prosecutor|Judge|Attorney|Lawyer|Leader|Chief\s+Information\s+Officer|Chief\s+Executive\s+Officer"
+        )
+
+        # 선행 직함형: [Org]? Title Name(Name2)
+        p_title_name = _re.compile(
+            rf"\b((?:[A-Z][\w.&-]+\s+)?(?:{titles}))\s+([A-Z][a-zA-Z-]+(?:\s+[A-Z][a-zA-Z-]+){{0,2}})\b"
+        )
+        # 후행 직함형: Name, Title (of Org)?
+        p_name_title = _re.compile(
+            rf"\b([A-Z][a-zA-Z-]+(?:\s+[A-Z][a-zA-Z-]+){{0,2}})\s*,\s*((?:{titles}))(?:\s+of\s+[A-Z][\w\s&.-]+)?\b"
+        )
+
+        # 한국 성씨 화이트리스트(간단)
+        kr_surnames = {
+            'Kim','Lee','Rhee','Yi','Park','Bak','Pak','Choi','Jung','Jeong','Kang','Cho','Jo','Yoon','Yun','Jang','Chang','Lim','Im','Han','Shin','Sin','Yoo','Yu','Hwang','Kwon','Gwon','Oh','O','Seo','Suh','Moon','Mun','Ryu','Nam','Song','Hong','Jeon','Chun','Jun','Ko','Koh','Koo','Bae','Pae','Baek','Paek','Byun','Byeon','Cha','Ha','Heo','Hur','No','Roh','Noh'
+        }
+
+        def infer_surname(full_name: str) -> str:
+            parts = full_name.split()
+            if not parts:
+                return full_name
+            if parts[0] in kr_surnames:
+                return parts[0]
+            if len(parts) == 2 and '-' in parts[1]:
+                return parts[0]
+            return parts[-1]
+
+        items = sorted(
+            sentences_by_id.items(),
+            key=lambda kv: (kv[0][0], int(kv[0][1:]) if kv[0][1:].isdigit() else 10**9)
+        )
+
+        pairs: List[Dict[str, str]] = []
+        seen: set[str] = set()
+        for sid, text in items:
+            if not text:
+                continue
+            for m in p_title_name.finditer(text):
+                title = m.group(1).strip()
+                full_name = m.group(2).strip()
+                key = f"{title}|{full_name}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                pairs.append({
+                    'sentence_id': sid,
+                    'full_name': full_name,
+                    'surname': infer_surname(full_name),
+                    'title': title,
+                    'mention_text': m.group(0),
+                })
+            for m in p_name_title.finditer(text):
+                full_name = m.group(1).strip()
+                title = m.group(2).strip()
+                key = f"{title}|{full_name}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                pairs.append({
+                    'sentence_id': sid,
+                    'full_name': full_name,
+                    'surname': infer_surname(full_name),
+                    'title': title,
+                    'mention_text': m.group(0),
+                })
+
+        return pairs
+    def _augment_detections_with_title(self, detections: List[Dict], numbered_sentences: Dict[str, List[str]]) -> List[Dict]:
+        import re as _re
+        body = numbered_sentences.get('body', []) or []
+        body_sents = {f"B{i+1}": s for i, s in enumerate(body)}
+        if not body_sents:
+            return detections
+        pairs = self._detect_local_title_pairs(body_sents)
+        if not pairs:
+            return detections
+        existing = {(d.get('sentence_id'), d.get('rule_id')) for d in detections}
+        a42 = self.ai_rules.get('A42', {'group': 'Grammar Rules', 'description': 'Avoid repeating titles after first mention; use the surname or "the <title>".'})
+        group = a42.get('group', 'Grammar Rules')
+        desc = a42.get('description', 'Avoid repeating titles after first mention; use the surname.')
+        def sid_idx(sid: str) -> int:
+            try:
+                return int(sid[1:])
+            except Exception:
+                return 10**9
+        augmented: List[Dict] = []
+        for p in pairs:
+            first = p['sentence_id']
+            title = _re.escape(p['title'])
+            surname = _re.escape(p['surname'])
+            full_name = _re.escape(p['full_name'])
+            pat_repeat = _re.compile(rf"\b(?:{title})\s+(?:{surname}|{full_name})\b|\b{full_name}\s*,\s*(?:{title})\b", _re.IGNORECASE)
+            first_i = sid_idx(first)
+            for sid, text in body_sents.items():
+                if sid_idx(sid) <= first_i:
+                    continue
+                if (sid, 'A42') in existing:
+                    continue
+                if pat_repeat.search(text or ''):
+                    augmented.append({
+                        'sentence_id': sid,
+                        'rule_id': 'A42',
+                        'component': 'body',
+                        'rule_description': desc,
+                        'violation_type': group,
+                    })
+                    existing.add((sid, 'A42'))
+        if augmented:
+            try:
+                logger.info(f"  [A42] Local title augmentation: +{len(augmented)}")
+            except Exception:
+                pass
+        return detections + augmented
+
+    def _apply_replacements_outside_quotes(self, text: str, rules: List[tuple]) -> str:
+        parts = text.split('"')
+        for i in range(0, len(parts), 2):
+            seg = parts[i]
+            for pat, repl in rules:
+                try:
+                    seg = pat.sub(repl, seg)
+                except Exception:
+                    pass
+            parts[i] = seg
+        return '"'.join(parts)
+
+    def _build_local_title_enforcement_map(self, numbered_sentences: Dict[str, List[str]]) -> Dict[str, List[tuple]]:
+        import re as _re
+        body = numbered_sentences.get('body', []) or []
+        body_sents = {f"B{i+1}": s for i, s in enumerate(body)}
+        if not body_sents:
+            return {}
+        pairs = self._detect_local_title_pairs(body_sents)
+        if not pairs:
+            return {}
+        def sid_idx(sid: str) -> int:
+            try:
+                return int(sid[1:])
+            except Exception:
+                return 10**9
+        rules: Dict[str, List[tuple]] = {}
+        for p in pairs:
+            first = p['sentence_id']
+            title = _re.escape(p['title'])
+            full_name = _re.escape(p['full_name'])
+            surname = p['surname']
+            first_i = sid_idx(first)
+            pat_title_full = _re.compile(rf"(?<!\w){title}\s+{full_name}(?!\w)", _re.IGNORECASE)
+            pat_full_title = _re.compile(rf"(?<!\w){full_name}\s*,\s*{title}(?!\w)", _re.IGNORECASE)
+            pat_title_surname = _re.compile(rf"(?<!\w){title}\s+{_re.escape(surname)}(?!\w)", _re.IGNORECASE)
+            for sid in body_sents.keys():
+                if sid_idx(sid) <= first_i:
+                    continue
+                rules.setdefault(sid, []).extend([
+                    (pat_title_full, surname),
+                    (pat_full_title, surname),
+                    (pat_title_surname, surname),
+                ])
+        return rules
+
     def _apply_corrections(
         self,
         components: Dict[str, str],
         numbered_sentences: Dict[str, List[str]],
         violations: List[StyleViolation],
         local_acronym_enforcement: Optional[Dict[str, List[tuple]]] = None,
+        local_title_enforcement: Optional[Dict[str, List[tuple]]] = None,
     ) -> Dict[str, str]:
         """문장 교체 및 컴포넌트 재구성 (원문 줄바꿈/공백 유지)
 
@@ -2266,11 +2793,20 @@ TITLE:
                 # 교정문 적용 여부
                 sid = f"{prefix}{idx}"
                 corrected = corrected_by_sid.get(sid, sent)
-                # 로컬 약어 치환 규칙 적용 (BODY에 한정)
+                # 로컬 약어 치환 규칙 적용 (BODY에 한정, 따옴표 외부만)
                 if local_acronym_enforcement and prefix == 'B':
-                    for pat, repl in local_acronym_enforcement.get(sid, []) or []:
+                    repls = local_acronym_enforcement.get(sid, []) or []
+                    if repls:
                         try:
-                            corrected = pat.sub(repl, corrected)
+                            corrected = self._apply_replacements_outside_quotes(corrected, repls)
+                        except Exception:
+                            pass
+                # 로컬 타이틀 치환 규칙 적용 (BODY에 한정, 따옴표 외부만)
+                if local_title_enforcement and prefix == 'B':
+                    repls = local_title_enforcement.get(sid, []) or []
+                    if repls:
+                        try:
+                            corrected = self._apply_replacements_outside_quotes(corrected, repls)
                         except Exception:
                             pass
                 result_parts.append(corrected)

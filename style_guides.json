@@ -625,7 +625,7 @@
       ],
       "examples": {
         "correct": [
-          "\"DPK Chairman Lee Sung0-hee spoke. Later, the chairman added...\"",
+          "\"DPK Chairman Lee Sung-hee spoke. Later, the chairman added...\"",
           "\"DPK Chairman Lee Sung-hee spoke. Later, Lee added...\""
         ],
         "incorrect": [
