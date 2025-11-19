@@ -788,14 +788,13 @@ export default function App() {
           setAdditionalInstructions("");
 
           // 로컬 모드에서 히스토리 저장
-          // 조건: finalOutputText가 있고, 실제 텍스트를 받았으며(hasReceivedFirstText), 에러 메시지가 아닌 경우
+          // 조건: finalOutputText가 있고, 실제 텍스트를 받았으며(hasReceivedFirstText), 에러 상태가 아닌 경우
+          // 텍스트 내용에 'error' / 'failed' 같은 단어가 포함되어도 정상 문장일 수 있으므로, 문자열 기반 에러 감지는 하지 않는다.
           const isValidOutput =
             finalOutputText &&
             hasReceivedFirstText &&
             !hasError &&
-            !finalOutputText.toLowerCase().includes("error") &&
-            !finalOutputText.toLowerCase().includes("failed") &&
-            finalOutputText.length > 10; // 최소 길이 확인
+            finalOutputText.trim().length > 0; // 실제로 텍스트가 존재하면 정상 출력으로 간주
 
           // 입력과 출력이 동일한지 확인 (공백 제거 후 비교)
           const isUnchanged = inputText.trim() === finalOutputText.trim();
