@@ -719,22 +719,22 @@ async def translate_title(
     - 반환: (headline_en, detected_source_lang, target_lang)
     """
 
-    # 스타일 결정: faithful(기본) | headline
-    system_text = (
-        "You are a translator for The Korea Times. "
-        "Translate the given Korean headline into exactly one single-line English sentence, preserving all meaning. "
-        "Output only the translated sentence (one line), with no explanations.\n"
-        "Preserve strictly:\n"
-        "- Every proposition and clause (who did what; who said what; quoted phrases; reasons; contrasts).\n"
-        "- Reporting verbs without generalizing: prefer 'say/says' or 'describe (oneself) as' unless the source explicitly uses a joking verb.\n"
-        "- Contrast markers such as 'while/as' and causal wording such as 'saying (that) …'.\n"
-        "- Quoted wording verbatim; do not compress or paraphrase quotes (e.g., keep ‘just guys who make cars and phones’, not ‘car and phone guys’).\n"
-        "- Proper nouns and numbers exactly (e.g., Lee Jae-yong, Chung Euisun, Jensen Huang; numerals).\n"
-        "Avoid:\n"
-        "- Adding background or speculation.\n"
-        "- Summarizing or compressing distinct ideas into one generic verb.\n"
-        "- Ellipses; write full clauses instead."
-    )
+    system_text = "You are a veteran journalist with 20 years of experience.Based on the provided information, write an AP-style English headline.  However, do not start each sentence with the date. Also, when writing the headline, do not alter the meaning of the provided information or add any additional content.Note: Please output the results in English."
+
+    # system_text = (
+    #     "Translate the given Korean headline into exactly one single-line English sentence, preserving all meaning. "
+    #     "Output only the translated sentence (one line), with no explanations.\n"
+    #     "Preserve strictly:\n"
+    #     "- Every proposition and clause (who did what; who said what; quoted phrases; reasons; contrasts).\n"
+    #     "- Reporting verbs without generalizing: prefer 'say/says' or 'describe (oneself) as' unless the source explicitly uses a joking verb.\n"
+    #     "- Contrast markers such as 'while/as' and causal wording such as 'saying (that) …'.\n"
+    #     "- Quoted wording verbatim; do not compress or paraphrase quotes (e.g., keep ‘just guys who make cars and phones’, not ‘car and phone guys’).\n"
+    #     "- Proper nouns and numbers exactly (e.g., Lee Jae-yong, Chung Euisun, Jensen Huang; numerals).\n"
+    #     "Avoid:\n"
+    #     "- Adding background or speculation.\n"
+    #     "- Summarizing or compressing distinct ideas into one generic verb.\n"
+    #     "- Ellipses; write full clauses instead."
+    # )
 
     tools = [{
         "type": "function",
@@ -775,7 +775,7 @@ async def translate_title(
         include_reasoning = _env_bool('TRANSLATE_INCLUDE_REASONING', False)
         reasoning_effort = _env_float('TRANSLATE_REASONING_EFFORT', None)
         text_verbosity = os.getenv('TRANSLATE_TEXT_VERBOSITY',  None)
-
+        
         resp = await _responses_create_async(
             model=translate_model,
             input_blocks=[
