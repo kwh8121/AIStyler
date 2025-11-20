@@ -260,6 +260,7 @@ async def call_gpt5v2_correction_stream(
                 logger.info("[gpt5v2] Using translate_title (single-pass) for headline/SEO")
                 before_en, source_lang, target_lang = await translate_title(text)
         else:
+            print("nononono hi headline  ?? ? ? ?")
             before_en, source_lang, target_lang = await translate_text(
                 text,
                 source_lang=None,

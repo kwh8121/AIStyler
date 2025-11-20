@@ -22,7 +22,7 @@ from .schemas import (
 )
 from .models import ArticleCategory, OperationType
 from . import service
-from .services.translation import translate_title
+from .services.translation import translate_title, _is_probably_english
 from ..config import settings
 import json
 import time
@@ -138,18 +138,27 @@ async def correct_article_stream(body: ArticleCorrectionRequest, db: SessionDep,
         try:
             # 1. 번역 시작 메시지 전송
             yield f"data: {json.dumps({'status': 'translating', 'message': '번역중...'}, ensure_ascii=False)}\n\n"
-            
+
             # 2. 실제 번역 수행 (언어 정보 포함)
             translation_start = time.time()
             logger.info(f"Starting translation for text length: {len(body.text)} chars")
-            
-            # 자동 감지를 위해 source_lang=None으로 전달 (영어 텍스트는 번역 건너뜀)
-            before_en, source_lang, target_lang = await service.translate_text(
-                body.text,
-                source_lang=None,
-                target_lang="EN-US"
-            )
-            
+
+            # 제목/SEO는 전용 translate_title 사용 (한글일 때만)
+            if body.category in (ArticleCategory.TITLE, ArticleCategory.SEO):
+                if _is_probably_english(body.text or ""):
+                    logger.info("[correct/stream] Headline appears to be English; skipping translate_title")
+                    before_en, source_lang, target_lang = body.text, "EN", "EN-US"
+                else:
+                    logger.info("[correct/stream] Using translate_title (single-pass) for headline/SEO correction")
+                    before_en, source_lang, target_lang = await translate_title(body.text)
+            else:
+                # 본문/캡션은 일반 번역 파이프라인 사용 (이중 번역 + 자동 감지)
+                before_en, source_lang, target_lang = await service.translate_text(
+                    body.text,
+                    source_lang=None,
+                    target_lang="EN-US"
+                )
+
             translation_time = time.time() - translation_start
             logger.info(f"Translation completed in {translation_time:.3f}s, result length: {len(before_en)} chars")
 

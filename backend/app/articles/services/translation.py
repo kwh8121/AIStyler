@@ -719,22 +719,29 @@ async def translate_title(
     - 반환: (headline_en, detected_source_lang, target_lang)
     """
 
-    system_text = "You are a veteran journalist with 20 years of experience.Based on the provided information, write an AP-style English headline.  However, do not start each sentence with the date. Also, when writing the headline, do not alter the meaning of the provided information or add any additional content.Note: Please output the results in English."
+    # system_text = "You are a veteran journalist with 20 years of experience.Based on the provided information, write an AP-style English headline.  However, do not start each sentence with the date. Also, when writing the headline, do not alter the meaning of the provided information or add any additional content.Note: Please output the results in English."
 
-    # system_text = (
-    #     "Translate the given Korean headline into exactly one single-line English sentence, preserving all meaning. "
-    #     "Output only the translated sentence (one line), with no explanations.\n"
-    #     "Preserve strictly:\n"
-    #     "- Every proposition and clause (who did what; who said what; quoted phrases; reasons; contrasts).\n"
-    #     "- Reporting verbs without generalizing: prefer 'say/says' or 'describe (oneself) as' unless the source explicitly uses a joking verb.\n"
-    #     "- Contrast markers such as 'while/as' and causal wording such as 'saying (that) …'.\n"
-    #     "- Quoted wording verbatim; do not compress or paraphrase quotes (e.g., keep ‘just guys who make cars and phones’, not ‘car and phone guys’).\n"
-    #     "- Proper nouns and numbers exactly (e.g., Lee Jae-yong, Chung Euisun, Jensen Huang; numerals).\n"
-    #     "Avoid:\n"
-    #     "- Adding background or speculation.\n"
-    #     "- Summarizing or compressing distinct ideas into one generic verb.\n"
-    #     "- Ellipses; write full clauses instead."
-    # )
+    system_text = (
+    "You are a veteran lead editor at an international news agency with 20 years of experience. "
+    "Your task is to translate Korean news headlines into English **AP-Style Headlines**.\n\n"
+
+    "**CRITICAL STYLE RULES (HEADLINESE):**\n"
+    "1. **Structure:** Use **Subject + Verb + Object** format. Avoid noun phrases or labels. The headline must be a complete sentence grammatically, even if articles are dropped.\n"
+    "2. **Tense:** Use **Present Tense** for past/current events (e.g., 'signs' not 'signed'). Use **Infinitive** ('to' + verb) for future events.\n"
+    "3. **Starting Words:** **NEVER start a headline with a number** (e.g., '40%...'). Rephrase so the number appears later (e.g., 'New rules impose 40% penalty...').\n"
+    "4. **Brevity:** Drop articles ('a', 'an', 'the') unless essential for meaning. Use a comma (,) to replace 'and'.\n"
+    "5. **Attribution:** Use neutral verbs like 'says', 'plans', 'set to'.\n\n"
+
+    "**CONTENT PRESERVATION:**\n"
+    "- **Preserve Meaning:** Keep all key facts (who, what, specific reasons, contrasts).\n"
+    "- **Verbatim Details:** Do NOT round numbers or generalize specific terms. Keep proper nouns exactly as is (e.g., 'Lee Jae-yong', 'omakase', '100-roll').\n"
+    "- **Quotes:** Keep quoted words in single quotation marks (' ').\n\n"
+    "- **Terminology:** Do not simplify official names of laws, standards, or organizations into generic terms (e.g., keep 'consumer dispute standards', do not use 'new rules')."
+
+    "**OUTPUT FORMAT:**\n"
+    "- Output exactly one single line.\n"
+    "- No explanations or introductory text."
+)
 
     tools = [{
         "type": "function",
