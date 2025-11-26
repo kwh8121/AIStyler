@@ -22,6 +22,55 @@ from ...config import settings
 
 logger = logging.getLogger(__name__)
 
+# --- Prompts ---
+
+PROMPT_HEADLINE = """Role: You are a veteran headline writer. Convert the Korean headline to an English AP-style headline.
+
+Core rules:
+- Preserve the original meaning; do not add hype or new facts.
+- Headline case: Use sentence case. No period at the end.
+- Use present tense, strong verbs, and AP numerals (figures for 10+, percentages, ages, dates).
+- Avoid starting with a date. Use AP date forms if a date must appear.
+- Keep it concise (~6–12 words or under ~65 characters when possible).
+- Use commonly accepted English names for people/places; otherwise, use standard romanization.
+
+Output format:
+- One AP-style English headline only (no subtitle, no brackets)."""
+
+PROMPT_BODY = """Role: You are a veteran reporter (20 years). Write an English news article in AP style strictly from the Korean text provided.
+
+Core rules:
+- Do not add or infer facts; do not omit material facts present in the source. Preserve meaning and nuance.
+- No headline, no subheads, no quotes unless they appear in the source.
+- Keep the lead concise (1–2 sentences) and use short paragraphs (1–3 sentences each).
+- Use active voice, neutral tone, and plain language.
+- Dates & time: Follow AP style. Do not begin sentences with a date. Within 7 days use the day of week; otherwise use “Mon., Tue., …” month abbreviations where applicable (e.g., Jan., Feb., Aug., Sept., Oct., Nov., Dec.) and Arabic numerals.
+- Numbers: Follow AP numerals rules (use figures for 10 and above; always use figures for ages, dates, percentages, dimensions, money).
+- Titles: Capitalize formal titles before names; lowercase after names. No courtesy titles (Mr., Ms.).
+- Names & places: Use widely accepted English names when known; otherwise use official romanization. If a name may be unclear, add the Korean in parentheses on first mention only.
+- Units & currency: Use KRW as “won” with figures; include commas (e.g., 12,300 won). Convert only if the source gives a conversion.
+- No dateline unless explicitly provided in the source.
+- Keep proper nouns as in the source unless an established English style exists.
+
+Output format:
+- Pure article body only. No headline, no bullet points, no brackets.
+- Maintain factual accuracy and AP style throughout."""
+
+PROMPT_CAPTION = """Role: You are a wire-desk caption editor. Convert the Korean caption to an English photo caption in AP style.
+
+Core rules:
+- Present-tense description in the first sentence. Use a second sentence for background or timing if needed (past tense acceptable there).
+- Identify people clearly on first reference (full name, role/title if given). No courtesy titles.
+- “From left” placement: If listing people left-to-right, write “From left,” before the list. Do not place “from left” after the first name.
+- Location and day-of-week/date follow AP style; do not begin sentences with a date. Use month abbreviations where applicable.
+- Keep it tight and clear (ideally 1–2 sentences, max ~35 words unless necessary).
+- Do not add or infer details beyond the source. Do not quote or invent speech.
+- No credit lines, brackets, hashtags, or emojis.
+
+Output format:
+- Single AP-style caption only, no headline or bullets.
+- If IDs are uncertain, keep only what is supported by the source text."""
+
 # DeepL (선택적)
 try:
     import deepl  # type: ignore
@@ -234,12 +283,22 @@ async def _responses_create_async(*, model: str, input_blocks: list, tools: list
 async def _openai_translate(
     text: str,
     target_lang: str,
+    category: Optional[str] = None,
 ) -> Tuple[str, str]:
     """OpenAI Responses API를 사용한 번역 + 언어 감지.
 
     Returns: (translated_text, detected_source_lang)
     """
-    system_text = """
+    # 카테고리별 프롬프트 선택
+    if category == "TITLE":
+        system_text = PROMPT_HEADLINE
+    elif category == "BODY":
+        system_text = PROMPT_BODY
+    elif category == "CAPTION":
+        system_text = PROMPT_CAPTION
+    else:
+        # 기존 기본 프롬프트 (Fallback)
+        system_text = """
 You are a professional news translator and editor for The Korea Times.
 
 Your mission:
@@ -310,10 +369,22 @@ Deliver only clean publication-ready English prose.
 Source article:
 [PASTE SOURCE ARTICLE HERE]
 """
+    
+    # 스타일 가이드 주입 (기본 프롬프트 사용 시에만 적용하거나, 전체 적용 고려)
+    # 여기서는 기존 로직 유지: guidelines가 있으면 추가
     guidelines = _load_translation_guidelines_text()
     if guidelines:
         system_text += "\n\nApply these translation style rules strictly:\n" + guidelines
-    user_instruction = "Target language: EN-US"
+    
+    user_instruction = "Task:\nTranslate and rewrite the following Korean article into an English AP-style article, following all rules above."
+    if category == "TITLE":
+         user_instruction = "Task:\nConvert the Korean headline to an English AP-style headline."
+    elif category == "CAPTION":
+         user_instruction = "Task:\nTranslate and edit the following Korean caption into a concise, AP-style English caption, following all rules above."
+
+    # Target language instruction (if generic)
+    if not category:
+         user_instruction = "Target language: EN-US"
 
     t0 = time.time()
     try:
@@ -609,7 +680,8 @@ async def _deepl_translate(
 async def translate_text(
     text: str,
     source_lang: Optional[str] = None,
-    target_lang: str = "EN-US"
+    target_lang: str = "EN-US",
+    category: Optional[str] = None,  # "TITLE", "BODY", "CAPTION"
 ) -> Tuple[str, str, str]:
     """범용 텍스트 번역 함수 (OpenAI)
 
@@ -617,6 +689,7 @@ async def translate_text(
         text: 번역할 텍스트
         source_lang: 소스 언어 코드 (None이면 자동 감지; OpenAI 측에서 감지)
         target_lang: 타겟 언어 코드 (예: EN-US)
+        category: 기사 컴포넌트 카테고리 (TITLE, BODY, CAPTION) - 전용 프롬프트 사용 시 필요
 
     Returns:
         (번역된 텍스트, 감지된 소스 언어, 타겟 언어) 튜플
@@ -672,7 +745,7 @@ async def translate_text(
             logger.warning("OPENAI_API_KEY not configured; falling back to DeepL if available")
         else:
             try:
-                translated, detected = await _openai_translate(text, normalized_target)
+                translated, detected = await _openai_translate(text, normalized_target, category=category)
                 _last_provider = "openai"
                 return translated, (source_lang or detected or "UNKNOWN"), normalized_target
             except Exception as e:
@@ -721,27 +794,7 @@ async def translate_title(
 
     # system_text = "You are a veteran journalist with 20 years of experience.Based on the provided information, write an AP-style English headline.  However, do not start each sentence with the date. Also, when writing the headline, do not alter the meaning of the provided information or add any additional content.Note: Please output the results in English."
 
-    system_text = (
-    "You are a veteran lead editor at an international news agency with 20 years of experience. "
-    "Your task is to translate Korean news headlines into English **AP-Style Headlines**.\n\n"
-
-    "**CRITICAL STYLE RULES (HEADLINESE):**\n"
-    "1. **Structure:** Use **Subject + Verb + Object** format. Avoid noun phrases or labels. The headline must be a complete sentence grammatically, even if articles are dropped.\n"
-    "2. **Tense:** Use **Present Tense** for past/current events (e.g., 'signs' not 'signed'). Use **Infinitive** ('to' + verb) for future events.\n"
-    "3. **Starting Words:** **NEVER start a headline with a number** (e.g., '40%...'). Rephrase so the number appears later (e.g., 'New rules impose 40% penalty...').\n"
-    "4. **Brevity:** Drop articles ('a', 'an', 'the') unless essential for meaning. Use a comma (,) to replace 'and'.\n"
-    "5. **Attribution:** Use neutral verbs like 'says', 'plans', 'set to'.\n\n"
-
-    "**CONTENT PRESERVATION:**\n"
-    "- **Preserve Meaning:** Keep all key facts (who, what, specific reasons, contrasts).\n"
-    "- **Verbatim Details:** Do NOT round numbers or generalize specific terms. Keep proper nouns exactly as is (e.g., 'Lee Jae-yong', 'omakase', '100-roll').\n"
-    "- **Quotes:** Keep quoted words in single quotation marks (' ').\n\n"
-    "- **Terminology:** Do not simplify official names of laws, standards, or organizations into generic terms (e.g., keep 'consumer dispute standards', do not use 'new rules')."
-
-    "**OUTPUT FORMAT:**\n"
-    "- Output exactly one single line.\n"
-    "- No explanations or introductory text."
-)
+    system_text = PROMPT_HEADLINE
 
     tools = [{
         "type": "function",

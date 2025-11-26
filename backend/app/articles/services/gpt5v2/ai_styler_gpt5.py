@@ -650,30 +650,36 @@ class AIStylerGPT5Sentence:
         return components
 
     def _create_numbered_sentences(self, components: Dict[str, str]) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
-        """문장 분할 및 번호 부여"""
+        """문장 분할 및 번호 부여
+
+        - Title, Caption: 문장 분리 없이 전체 텍스트를 하나의 문장으로 처리
+        - Body: 기존처럼 NLTK를 사용한 문장 분리 수행
+        """
         numbered_sentences = {}
         sentence_map = {}  # sentence_id -> sentence_text
 
-        # Title sentences
-        title_sentences = self._split_sentences(components['title'])
-        numbered_sentences['title'] = title_sentences
-        for i, sent in enumerate(title_sentences):
-            sid = f"T{i+1}"
-            sentence_map[sid] = sent
+        # Title: 문장 분리 없이 전체를 하나의 문장으로 처리
+        title_text = (components.get('title') or '').strip()
+        if title_text:
+            numbered_sentences['title'] = [title_text]
+            sentence_map['T1'] = title_text
+        else:
+            numbered_sentences['title'] = []
 
-        # Body sentences
+        # Body sentences: 기존처럼 문장 분리 수행
         body_sentences = self._split_sentences(components['body'])
         numbered_sentences['body'] = body_sentences
         for i, sent in enumerate(body_sentences):
             sid = f"B{i+1}"
             sentence_map[sid] = sent
 
-        # Caption sentences
-        caption_sentences = self._split_sentences(components['caption'])
-        numbered_sentences['caption'] = caption_sentences
-        for i, sent in enumerate(caption_sentences):
-            sid = f"C{i+1}"
-            sentence_map[sid] = sent
+        # Caption: 문장 분리 없이 전체를 하나의 문장으로 처리
+        caption_text = (components.get('caption') or '').strip()
+        if caption_text:
+            numbered_sentences['caption'] = [caption_text]
+            sentence_map['C1'] = caption_text
+        else:
+            numbered_sentences['caption'] = []
 
         return numbered_sentences, sentence_map
 
@@ -750,7 +756,8 @@ class AIStylerGPT5Sentence:
         components: Dict[str, str]
     ) -> str:
         """Correction.position 기반 문장 매핑(정규식 보강용)
-        - component 텍스트에서 문장 경계를 계산하고 position이 포함된 문장으로 매핑
+        - Title, Caption: 문장 분리 없이 전체를 하나의 문장으로 처리 (T1, C1)
+        - Body: component 텍스트에서 문장 경계를 계산하고 position이 포함된 문장으로 매핑
         - 실패 시 "N/A"
         """
         try:
@@ -762,6 +769,13 @@ class AIStylerGPT5Sentence:
             if not comp_text:
                 return "N/A"
 
+            # Title, Caption: 문장 분리 없이 T1, C1 반환
+            if component == 'title':
+                return "T1"
+            if component == 'caption':
+                return "C1"
+
+            # Body: 기존처럼 문장 분리 후 position 기반 매핑
             sentences = self._split_sentences(comp_text)
             if not sentences:
                 return "N/A"
@@ -786,8 +800,7 @@ class AIStylerGPT5Sentence:
 
             for i, (start, end) in enumerate(offsets, start=1):
                 if start <= pos < end:
-                    prefix = {'title': 'T', 'body': 'B', 'caption': 'C'}[component]
-                    return f"{prefix}{i}"
+                    return f"B{i}"
             return "N/A"
         except Exception:
             return "N/A"
@@ -2254,16 +2267,16 @@ IMPORTANT:
 
         # 캡션 전용 지침만 캡션에 포함
         if component_type == 'caption':
-            instructions += """
+#             instructions += """
 
-DATE NORMALIZATION (KST):
-- Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
-- If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
-- If it is listed on the future side, rewrite as '<weekday>'.
-- If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
-- If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
-- When ambiguous, do not convert; keep the absolute date.
-"""
+# DATE NORMALIZATION (KST):
+# - Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
+# - If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
+# - If it is listed on the future side, rewrite as '<weekday>'.
+# - If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
+# - If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
+# - When ambiguous, do not convert; keep the absolute date.
+# """
 
             instructions += """
 
@@ -2758,8 +2771,9 @@ TITLE:
     ) -> Dict[str, str]:
         """문장 교체 및 컴포넌트 재구성 (원문 줄바꿈/공백 유지)
 
-        원문 컴포넌트 텍스트에서 NLTK로 문장을 탐지하되, 재조립 시
-        문장 사이의 모든 공백(개행 포함)을 원문 그대로 보존한다.
+        - Title, Caption: 문장 분리 없이 전체 텍스트를 바로 교체
+        - Body: 원문 컴포넌트 텍스트에서 NLTK로 문장을 탐지하되, 재조립 시
+          문장 사이의 모든 공백(개행 포함)을 원문 그대로 보존
         """
 
         # sentence_id -> corrected_sentence 매핑
@@ -2771,10 +2785,10 @@ TITLE:
             except Exception:
                 continue
 
-        def rebuild_component(comp_text: str, prefix: str) -> str:
+        def rebuild_body(comp_text: str) -> str:
+            """Body 컴포넌트: NLTK 문장 분리 후 재조립 (공백/개행 보존)"""
             if not comp_text:
                 return comp_text
-            # NLTK로 문장 분할 (텍스트만 가져옴)
             sents = self._split_sentences(comp_text)
             if not sents:
                 return comp_text
@@ -2786,16 +2800,16 @@ TITLE:
                 if found == -1:
                     # 예상치 못한 경우: 남은 모든 텍스트를 붙이고 종료
                     result_parts.append(comp_text[pos:])
-                    logger.debug(f"Sentence not found while rebuilding {prefix}{idx}; preserving tail as-is")
+                    logger.debug(f"Sentence not found while rebuilding B{idx}; preserving tail as-is")
                     return ''.join(result_parts)
                 # 앞의 구분자(공백/개행 등) 보존
                 if found > pos:
                     result_parts.append(comp_text[pos:found])
                 # 교정문 적용 여부
-                sid = f"{prefix}{idx}"
+                sid = f"B{idx}"
                 corrected = corrected_by_sid.get(sid, sent)
                 # 로컬 약어 치환 규칙 적용 (BODY에 한정, 따옴표 외부만)
-                if local_acronym_enforcement and prefix == 'B':
+                if local_acronym_enforcement:
                     repls = local_acronym_enforcement.get(sid, []) or []
                     if repls:
                         try:
@@ -2803,7 +2817,7 @@ TITLE:
                         except Exception:
                             pass
                 # 로컬 타이틀 치환 규칙 적용 (BODY에 한정, 따옴표 외부만)
-                if local_title_enforcement and prefix == 'B':
+                if local_title_enforcement:
                     repls = local_title_enforcement.get(sid, []) or []
                     if repls:
                         try:
@@ -2817,9 +2831,16 @@ TITLE:
                 result_parts.append(comp_text[pos:])
             return ''.join(result_parts)
 
-        title_out = rebuild_component(components.get('title', ''), 'T')
-        body_out = rebuild_component(components.get('body', ''), 'B')
-        caption_out = rebuild_component(components.get('caption', ''), 'C')
+        # Title: 문장 분리 없이 T1으로 바로 교체
+        title_text = components.get('title', '')
+        title_out = corrected_by_sid.get('T1', title_text) if title_text else title_text
+
+        # Body: 기존처럼 문장 분리 및 재조립
+        body_out = rebuild_body(components.get('body', ''))
+
+        # Caption: 문장 분리 없이 C1으로 바로 교체
+        caption_text = components.get('caption', '')
+        caption_out = corrected_by_sid.get('C1', caption_text) if caption_text else caption_text
 
         return {
             'title': title_out,

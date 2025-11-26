@@ -265,6 +265,7 @@ async def call_gpt5v2_correction_stream(
                 text,
                 source_lang=None,
                 target_lang="EN-US",
+                category=category.value if hasattr(category, "value") else str(category),
             )
         t_translation = time.time() - t0
         yield json.dumps({"status": "translation_complete", "message": "번역 완료"}, ensure_ascii=False)

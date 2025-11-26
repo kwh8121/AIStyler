@@ -253,32 +253,20 @@
     "C07": {
       "rule_id": "C07",
       "component": "caption",
-      "group": "Date Format",
-      "description": "If a sentence contains an absolute date, use the Date context (within 7 days, KST) shown in the prompt as the only basis for conversion. If the referenced date appears on the past side of that context, rewrite as ‘last <weekday>’. If it appears on the future side, rewrite as ‘<weekday>’. If it does not appear in the context (older than 7 days in the past or beyond 7 days in the future), keep ‘Month Day[, Year]’ and omit the weekday. If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input. When ambiguous, do not convert.",
+      "group": "Date Processing",
+      "description": "**Handle ALL date-related tasks (Logic, Position, Format). Follow strict priority:**\n\n1. **Step 1: The 'List Check' (GATEKEEPER):**\n   - Look at the **'Date context (within 7 days, KST)'** list provided in the input.\n   - **Check:** Does the date in the sentence (e.g., Nov. 10) appear in that specific list?\n   - **NO (Not in list):** STOP conversion. Keep the absolute date format (e.g., 'Nov. 10'). Proceed to Step 3.\n   - **YES (In list):** Proceed to Step 2.\n\n2. **Step 2: Relative Conversion (Strict Lookup):**\n   - **CRITICAL:** Do NOT calculate the weekday. **Look at the list** and find the matching entry (e.g., '11-26 (Wed)').\n   - **Extract:** Use the weekday code from the parentheses (e.g., 'Wed' → 'Wednesday').\n   - **Logic (Last/Next):** Compare with Article Date.\n     - **PAST:** If before article date, MUST write 'last <Weekday>'.\n     - **FUTURE:** If after article date, write '<Weekday>' only.\n\n3. **Step 3: Positioning & Formatting:**\n   - **Position:** Move the date phrase immediately after the location **IF AND ONLY IF** a specific location exists.\n   - **No Invention:** If NO location exists, keep the date where it is.\n   - **Format:** Remove 'on'. Use a comma before the date **ONLY IF** it follows a location.",
       "examples": [
         {
-          "incorrect": "The fire broke out, Nov. 3. [article date: 2025.11.10]",
-          "correct": "The fire broke out last Monday. [article date: 2025.11.10]"
+          "incorrect": "A warning was issued on Nov. 10. [Date context: 11-18 to 11-30]",
+          "correct": "A warning was issued Nov. 10. [Nov. 10 NOT in list -> Keep absolute date]"
         },
         {
-          "incorrect": "Protesters gather in front of the parliament in London, Thursday, Oct. 21, 2025.",
-          "correct": "Protesters gather in front of the parliament in London, Oct. 21, 2025."
+          "incorrect": "The event starts on Nov. 26. [Date context includes: 11-26 (Wed)]",
+          "correct": "The event starts Wednesday. [List says (Wed) -> Wednesday]"
         },
         {
-          "incorrect": "A memorial was held last Sunday.",
-          "correct": "A memorial was held Nov. 2."
-        },
-        {
-          "incorrect": "The fire broke out, Nov. 12.",
-          "correct": "The fire broke out last Wednesday."
-        },
-        {
-          "incorrect": "The event was held Nov. 2, 2025.",
-          "correct": "The event was held Nov. 2, 2025."
-        },
-        {
-          "incorrect": "The event was held Nov. 2",
-          "correct": "The event was held Nov. 2"
+          "incorrect": "The fire broke out, Nov. 18. [Date context includes: 11-18 (Tue)]",
+          "correct": "The fire broke out last Tuesday. [List says (Tue) + Past -> last Tuesday]"
         }
       ]
     },
@@ -291,34 +279,6 @@
         {
           "incorrect": "South Korean President Yoon Suk-yeol greets President Joe Biden at a summit in Seoul.",
           "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden at a summit in Seoul."
-        }
-      ]
-    },
-    "C10": {
-      "rule_id": "C10",
-      "component": "caption",
-      "group": "Basic Principles",
-      "description": "Do not use \"on\" before the day of the week or the date. Use comma in front of the day.",
-      "examples": [
-        {
-          "incorrect": "People enjoy performances during the festival in Seoul, on Thursday.",
-          "correct": "People enjoy performances during the festival in Seoul, Thursday."
-        }
-      ]
-    },
-    "C11": {
-      "rule_id": "C11",
-      "component": "caption",
-      "group": "Date Format",
-      "description": "**Date Placement and Formatting:**\n1. **Mandatory Order (Location First):** The date MUST always follow the specific location/city. NEVER place the date before the location (e.g., avoid 'on March 7 at the court'). Move the date phrase to the end of the location phrase.\n2. **Specific Date Format:** When a specific day is present (Month + Day), use a comma after the location (e.g., '... in Seoul, May 17'). Remove 'on' before the date.\n3. **Month/Year Only Format:** If only the month/year are present, do NOT use a comma. Use the preposition 'in' (e.g., '... in Seoul in May 2023').",
-      "examples": [
-        {
-          "incorrect": "Visitors walk through the exhibition hall in Seoul, May 2023.",
-          "correct": "Visitors walk through the exhibition hall in Seoul in May 2023."
-        },
-        {
-          "incorrect": "People attend the event on May 17 in Seoul.",
-          "correct": "People attend the event in Seoul, May 17."
         }
       ]
     },
