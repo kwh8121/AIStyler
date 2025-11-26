@@ -489,12 +489,16 @@ class AIStylerGPT5Sentence:
             logger.debug("[v2] dump failed for %s: %s", kind, exc)
 
     def _format_kst_date_context(self, article_date: Optional[str]) -> str:
-        """Return a compact KST date context block.
+        """Return a compact KST date context block with MM-DD format.
 
         - Input: article_date in ISO (YYYY-MM-DD) or None
         - Output lines:
-          Article Date (KST): YYYY-MM-DD (DOW)
-          Date context (±7, KST): MM-DD (DOW), ...
+          Article Date: 2025-11-26 (Wed)
+          Date context (within 7 days): 11-20 (Thu), 11-21 (Fri), ... 11-26 (Wed) *, ...
+          (To match: 'Oct. 26' → 10-26, 'December 1' → 12-01)
+
+        Uses simple MM-DD format for clear lookup.
+        LLM converts caption dates (e.g., 'Nov. 20', 'December 1') to MM-DD for matching.
 
         If parsing fails or article_date is falsy, returns empty string.
         """
@@ -503,12 +507,12 @@ class AIStylerGPT5Sentence:
         try:
             base = datetime.strptime(article_date, "%Y-%m-%d").date()
         except Exception:
-            return f"Article Date (KST): {article_date}"
+            return f"Article Date: {article_date}"
 
         dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         dow = dows[base.weekday()]
 
-        # Build ±7 day compact table
+        # Build ±7 day compact table with MM-DD format
         days: List[str] = []
         for offset in range(-6, 7):  # inclusive
             d = base + timedelta(days=offset)
@@ -518,8 +522,8 @@ class AIStylerGPT5Sentence:
             days.append(tag)
 
         return "\n".join([
-            f"Article Date (KST): {base.isoformat()} ({dow})",
-            "Date context (within 7 days, KST): " + ", ".join(days)
+            f"Article Date: {base.isoformat()} ({dow})",
+            "Date context (within 7 days): " + ", ".join(days),
         ])
 
     def _infer_local_reference_date(self, sentences: List[str], article_date: Optional[str] = None) -> Optional[str]:
@@ -1327,97 +1331,149 @@ class AIStylerGPT5Sentence:
         component_type: str,
         component_rules: Dict
     ) -> str:
-        """단일 컴포넌트에 대한 Detection 지시사항 생성 (JSON 구조 사용)"""
+        """단일 컴포넌트에 대한 Detection 지시사항 생성 (간소화 버전)
 
-        # 컴포넌트별 이름 매핑 및 특별 강조사항
+        규칙은 gpt_style_guide.json에서 가져오며, instruction은 최소한으로 유지하여
+        JSON 규칙과의 충돌을 방지합니다.
+        """
+
+        # 컴포넌트별 이름 매핑
         component_display_names = {
-            'title': ('HEADLINE', 'H', 'Title'),
-            'body': ('BODY', 'A', 'Body'),
-            'caption': ('CAPTION', 'C', 'Caption')
+            'title': ('HEADLINE', 'T'),
+            'body': ('BODY', 'B'),
+            'caption': ('CAPTION', 'C')
         }
 
-        display_name, rule_prefix, sentence_type = component_display_names[component_type]
+        display_name, sentence_prefix = component_display_names[component_type]
 
-        # 동적으로 규칙 범위(H01-H13 등) 계산
-        try:
-            nums = sorted(int(k[1:]) for k in component_rules.keys() if isinstance(k, str) and k.startswith(rule_prefix))
-            if nums:
-                rule_range = f"{rule_prefix}{nums[0]:02d}-{rule_prefix}{nums[-1]:02d}"
-            else:
-                rule_range = f"{rule_prefix}**"
-        except Exception:
-            rule_range = f"{rule_prefix}**"
-
-        # 컴포넌트별 특별 강조
-        special_focus = ""
-        if component_type == 'title':
-            special_focus = "\n⚡ **SPECIAL FOCUS FOR HEADLINES**: Pay close attention to H06 (omitting articles a/an/the), H01 (first letter capitalization), and H02 (avoiding ALL CAPS)."
-        elif component_type == 'body':
-            # BODY 전용 특별 강조: A09, A42 등 맥락 의존 규칙
-            special_focus = ("\n⚡ SPECIAL FOCUS (BODY):\n"
-                             "- A42 (Subsequent-reference titles): After the FIRST full mention of a person with a title (e.g., 'Finance Minister Koo Yun-cheol'), avoid repeating the title in LATER sentences; report as a violation and expect either the surname ('Koo') or 'the <title>' (e.g., 'the minister').\n"
-                             "- Do NOT modify text inside quotation marks.")
-
-        # JSON 규칙 포맷팅 (그룹 정보 포함)
+        # JSON 규칙 포맷팅 (그룹 정보 및 예제 포함)
         rules_text = []
         for rule_id, rule_data in component_rules.items():
-            # 그룹 정보 추가
             group = rule_data.get('group', 'General')
             rule_text = f"**{rule_id} ({group})**: {rule_data['description']}"
 
-            # Few-shot 예제 추가 (최대 2개, comment 지원)
-            exs = (rule_data.get('examples') or [])[:2]
-            for ex in exs:
-                inc = ex.get('incorrect', '')
-                cor = ex.get('correct', '')
-                com = ex.get('comment', '')
-                rule_text += f"\n  ✗ Incorrect: '{inc}'"
-                rule_text += f"\n  ✓ Correct: '{cor}'"
-                if com:
-                    rule_text += f"\n  ⓘ Note: {com}"
+            # Few-shot 예제 추가 (최대 2개)
+            for ex in (rule_data.get('examples') or [])[:2]:
+                rule_text += f"\n  ✗ '{ex.get('incorrect', '')}'"
+                rule_text += f"\n  ✓ '{ex.get('correct', '')}'"
+                if ex.get('comment'):
+                    rule_text += f"\n  ⓘ {ex.get('comment')}"
 
             rules_text.append(rule_text)
 
         rules_section = '\n\n'.join(rules_text)
         extra = getattr(self, '_extra_instructions', None)
-        instructions = f"""
-You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Do not rewrite; just report structured violations.
-{special_focus}
 
-TASK: DETECT {display_name} style guide violations - BE THOROUGH AND ACCURATE.
+        instructions = f"""You are a copy editor. Apply ONLY the rules below. Do not invent or apply any other rules.
 
-{display_name} STYLE GUIDE ({rule_range}) for {sentence_type} sentences:
+{display_name} RULES:
 
 {rules_section}
 
-DETECTION PRINCIPLES:
+OUTPUT FORMAT:
+For each violation found, report: sentence_id ("{sentence_prefix}1", "{sentence_prefix}2", ...), rule_id, component ("{component_type}"), rule_description, violation_type (use the group name in parentheses).
 
-BE THOROUGH - Review each sentence carefully against all applicable rules
-BE ACCURATE - Report violations you are confident about
-USE EXAMPLES - Compare sentences to the examples provided
-BALANCE PRECISION AND RECALL - Find violations but avoid over-detection
-
-DETECTION INSTRUCTIONS:
-
-1. Review EVERY sentence systematically against ALL the above style guide rules
-2. For violations you are confident about, report:
-   - sentence_id (e.g., "T1" for title, "B3" for body, "C2" for caption)
-   - rule_id (from the rules above, e.g., "H01", "A05", "C12")
-   - component ("{component_type}")
-   - rule_description (brief explanation of the violation)
-   - violation_type: MUST be the exact group name shown in parentheses after the rule_id (e.g., for "H01 (Capitalization)", use "Capitalization")
-
-3. If one sentence has multiple violations, return multiple entries
-
-4. Check examples carefully - if the sentence matches a violation pattern, report it
-5. When reasonably uncertain about borderline cases**, err on the side of not reporting
-6. For special focus rules (if mentioned above), be extra thorough
-
-7. If no violations are found, return an empty array []
-{('8. Additionally, follow this instruction strictly: ' + extra) if extra else ''}
-
-Note: Only check against {display_name} rules ({rule_range}). Do not apply rules from other sections."""
+If no violations, return empty array [].
+{('ADDITIONAL: ' + extra) if extra else ''}"""
         return instructions
+
+    # --- 기존 Detection Instruction (주석 처리) ---
+    # def _build_detection_instructions_for_component_legacy(
+    #     self,
+    #     component_type: str,
+    #     component_rules: Dict
+    # ) -> str:
+    #     """단일 컴포넌트에 대한 Detection 지시사항 생성 (JSON 구조 사용) - LEGACY"""
+    #
+    #     # 컴포넌트별 이름 매핑 및 특별 강조사항
+    #     component_display_names = {
+    #         'title': ('HEADLINE', 'H', 'Title'),
+    #         'body': ('BODY', 'A', 'Body'),
+    #         'caption': ('CAPTION', 'C', 'Caption')
+    #     }
+    #
+    #     display_name, rule_prefix, sentence_type = component_display_names[component_type]
+    #
+    #     # 동적으로 규칙 범위(H01-H13 등) 계산
+    #     try:
+    #         nums = sorted(int(k[1:]) for k in component_rules.keys() if isinstance(k, str) and k.startswith(rule_prefix))
+    #         if nums:
+    #             rule_range = f"{rule_prefix}{nums[0]:02d}-{rule_prefix}{nums[-1]:02d}"
+    #         else:
+    #             rule_range = f"{rule_prefix}**"
+    #     except Exception:
+    #         rule_range = f"{rule_prefix}**"
+    #
+    #     # 컴포넌트별 특별 강조
+    #     special_focus = ""
+    #     if component_type == 'title':
+    #         special_focus = "\n⚡ **SPECIAL FOCUS FOR HEADLINES**: Pay close attention to H06 (omitting articles a/an/the), H01 (first letter capitalization), and H02 (avoiding ALL CAPS)."
+    #     elif component_type == 'body':
+    #         # BODY 전용 특별 강조: A09, A42 등 맥락 의존 규칙
+    #         special_focus = ("\n⚡ SPECIAL FOCUS (BODY):\n"
+    #                          "- A42 (Subsequent-reference titles): After the FIRST full mention of a person with a title (e.g., 'Finance Minister Koo Yun-cheol'), avoid repeating the title in LATER sentences; report as a violation and expect either the surname ('Koo') or 'the <title>' (e.g., 'the minister').\n"
+    #                          "- Do NOT modify text inside quotation marks.")
+    #
+    #     # JSON 규칙 포맷팅 (그룹 정보 포함)
+    #     rules_text = []
+    #     for rule_id, rule_data in component_rules.items():
+    #         # 그룹 정보 추가
+    #         group = rule_data.get('group', 'General')
+    #         rule_text = f"**{rule_id} ({group})**: {rule_data['description']}"
+    #
+    #         # Few-shot 예제 추가 (최대 2개, comment 지원)
+    #         exs = (rule_data.get('examples') or [])[:2]
+    #         for ex in exs:
+    #             inc = ex.get('incorrect', '')
+    #             cor = ex.get('correct', '')
+    #             com = ex.get('comment', '')
+    #             rule_text += f"\n  ✗ Incorrect: '{inc}'"
+    #             rule_text += f"\n  ✓ Correct: '{cor}'"
+    #             if com:
+    #                 rule_text += f"\n  ⓘ Note: {com}"
+    #
+    #         rules_text.append(rule_text)
+    #
+    #     rules_section = '\n\n'.join(rules_text)
+    #     extra = getattr(self, '_extra_instructions', None)
+    #     instructions = f"""
+    # You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Do not rewrite; just report structured violations.
+    # {special_focus}
+    #
+    # TASK: DETECT {display_name} style guide violations - BE THOROUGH AND ACCURATE.
+    #
+    # {display_name} STYLE GUIDE ({rule_range}) for {sentence_type} sentences:
+    #
+    # {rules_section}
+    #
+    # DETECTION PRINCIPLES:
+    #
+    # BE THOROUGH - Review each sentence carefully against all applicable rules
+    # BE ACCURATE - Report violations you are confident about
+    # USE EXAMPLES - Compare sentences to the examples provided
+    # BALANCE PRECISION AND RECALL - Find violations but avoid over-detection
+    #
+    # DETECTION INSTRUCTIONS:
+    #
+    # 1. Review EVERY sentence systematically against ALL the above style guide rules
+    # 2. For violations you are confident about, report:
+    #    - sentence_id (e.g., "T1" for title, "B3" for body, "C2" for caption)
+    #    - rule_id (from the rules above, e.g., "H01", "A05", "C12")
+    #    - component ("{component_type}")
+    #    - rule_description (brief explanation of the violation)
+    #    - violation_type: MUST be the exact group name shown in parentheses after the rule_id (e.g., for "H01 (Capitalization)", use "Capitalization")
+    #
+    # 3. If one sentence has multiple violations, return multiple entries
+    #
+    # 4. Check examples carefully - if the sentence matches a violation pattern, report it
+    # 5. When reasonably uncertain about borderline cases**, err on the side of not reporting
+    # 6. For special focus rules (if mentioned above), be extra thorough
+    #
+    # 7. If no violations are found, return an empty array []
+    # {('8. Additionally, follow this instruction strictly: ' + extra) if extra else ''}
+    #
+    # Note: Only check against {display_name} rules ({rule_range}). Do not apply rules from other sections."""
+    #     return instructions
     
     def build_optimized_detection_prompt(
         self,
@@ -2233,84 +2289,95 @@ TASK:
 #         return instructions
 
     def _build_correction_instructions(self, component_type: str) -> str:
-        """Correction용 지시사항 (GPT-5-mini)"""
+        """Correction용 지시사항 (간소화 버전)
+
+        JSON 규칙과 충돌을 방지하기 위해 instruction은 최소화합니다.
+        추가 규칙이 필요하면 gpt_style_guide.json에 추가하세요.
+        """
         extra = getattr(self, '_extra_instructions', None)
 
-        instructions = """You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Preserve meaning, facts, names, and numerals; make minimal edits.
+        instructions = """You are a copy editor. Fix ONLY the violations listed below each sentence.
 
-TASK: CORRECT the sentences that have violations
+RULES:
+- Apply the correction pattern from the examples, but keep the original sentence's content.
+- Make minimal changes. Preserve meaning, facts, names, and numerals.
+- Return the complete corrected text.
 
-You will receive:
-1. Sentences that need correction (with their IDs)
-2. List of violations detected in each sentence
+STRUCTURE PRESERVATION:
+- Do NOT merge multiple sentences into one.
+- Do NOT split one sentence into multiple sentences.
+- Do NOT reorder sentences or move content between sentences.
+- Do NOT delete any sentences. All original sentences must be preserved.
+- Keep the original sentence structure; only fix the specific violation within each sentence.
 
-CORRECTION PROCESS:
+CRITICAL FOR MULTI-SENTENCE INPUT:
+- If the input contains multiple sentences, return ALL sentences in corrected_sentence.
+- Only modify the sentence(s) with violations; keep other sentences unchanged.
+- Example: Input "A walks. B, from left, C and D." → Output "A walks. From left, B, C and D."
 
-1. For each sentence, apply ALL the violations fixes mentioned
-2. Return the FULLY CORRECTED sentence
-3. Make sure ALL violations in that sentence are fixed
-
-RETURN FORMAT:
-- sentence_id: The sentence identifier (e.g., "B3")
-- corrected_sentence: The COMPLETE sentence with ALL violations fixed
-
-IMPORTANT:
-- Apply ALL fixes to each sentence based on the detected violations.
-- Return the complete corrected sentence, not fragments.
-- Make minimal changes (only fix the violations).
-- **CRITICAL:** Preserve the original information and meaning of the input sentence. Do NOT replace the input content with the example content.
-- **HOW TO USE EXAMPLES:** Use the provided examples only to understand the **correction pattern/logic**. Apply that logic to the input sentence. 
-- **EXCEPTION:** Only replace the sentence exactly with the example output IF AND ONLY IF the input sentence is identical to the example's 'Incorrect' sentence."""
+OUTPUT: sentence_id and corrected_sentence for each."""
 
         if extra:
-            instructions += f"\n\nADDITIONAL INSTRUCTION (apply strictly): {extra}"
-
-        # 캡션 전용 지침만 캡션에 포함
-        if component_type == 'caption':
-#             instructions += """
-
-# DATE NORMALIZATION (KST):
-# - Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
-# - If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
-# - If it is listed on the future side, rewrite as '<weekday>'.
-# - If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
-# - If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
-# - When ambiguous, do not convert; keep the absolute date.
-# """
-
-            instructions += """
-
-CREDIT NORMALIZATION (CAPTIONS):
-- Exactly one final credit. Do not duplicate or combine credits.
-- Sentential captions (has a finite verb): end the sentence with a period, then use either 'Courtesy of [Company].' or an in‑house/agency token (e.g., 'Korea Times file.'); do NOT use '/'.
-- Non‑sentential captions (noun phrases): do not introduce a verb. Use ' / ' before the single credit (e.g., ' / Courtesy of [Company]' or ' / Korea Times file').
-- Do not place a period immediately before '/': replace '. /' with ' / '.
-- Canonicalize 'Korea Times photo' → 'Korea Times file'; never split as 'Korea Times / File'.
-- Do not combine 'Courtesy of ...' with any agency/in‑house credit (including 'Korea Times file')."""
-
-        # 본문 전용 날짜 규칙 지침 추가
-#         if component_type == 'body':
-#             instructions += """
-
-# DATE NORMALIZATION (KST - BODY):
-# - Use the "Date context (within 7 days, KST)" block below as the only basis for conversion.
-# - If the referenced date is listed on the past side of that context, rewrite as 'last <weekday>'.
-# - If it is listed on the future side, rewrite as '<weekday>'.
-# - If it is not listed (older than 7 days or beyond 7 days), keep 'Month Day[, Year]' and omit the weekday.
-# - If the input date has no year, assume the article year only for deciding recency; do not add a year in the output unless it was present in the input.
-# - When ambiguous, do not convert; keep the absolute date.
-# """
-
-        # 한국 고유명 표기 교정은 본문/캡션에서만 사용 (헤드라인 제외)
-        if component_type in ('body', 'caption'):
-            instructions += """
-
-KOREAN-RELATED NOTATION (PALACE NAMES):
-- Rewrite 'Gyeongbokgung/Changdeokgung/Deoksugung/Changgyeonggung/Gyeonghuigung' to 'Gyeongbok/Changdeok/Deoksu/Changgyeong/Gyeonghui Palace'.
-- If it already appears as '<…>gung Palace', rewrite to '<Base> Palace' (e.g., 'Gyeongbokgung Palace' → 'Gyeongbok Palace').
-"""
+            instructions += f"\n\nADDITIONAL: {extra}"
 
         return instructions
+
+    # --- 기존 Correction Instruction (주석 처리) ---
+    # def _build_correction_instructions_legacy(self, component_type: str) -> str:
+    #     """Correction용 지시사항 (GPT-5-mini) - LEGACY"""
+    #     extra = getattr(self, '_extra_instructions', None)
+    #
+    #     instructions = """You are a senior news copy editor at The Korea Times. Use only the rules provided here; do not apply any other style guides. Preserve meaning, facts, names, and numerals; make minimal edits.
+    #
+    # TASK: CORRECT the sentences that have violations
+    #
+    # You will receive:
+    # 1. Sentences that need correction (with their IDs)
+    # 2. List of violations detected in each sentence
+    #
+    # CORRECTION PROCESS:
+    #
+    # 1. For each sentence, apply ALL the violations fixes mentioned
+    # 2. Return the FULLY CORRECTED sentence
+    # 3. Make sure ALL violations in that sentence are fixed
+    #
+    # RETURN FORMAT:
+    # - sentence_id: The sentence identifier (e.g., "B3")
+    # - corrected_sentence: The COMPLETE sentence with ALL violations fixed
+    #
+    # IMPORTANT:
+    # - Apply ALL fixes to each sentence based on the detected violations.
+    # - Return the complete corrected sentence, not fragments.
+    # - Make minimal changes (only fix the violations).
+    # - **CRITICAL:** Preserve the original information and meaning of the input sentence. Do NOT replace the input content with the example content.
+    # - **HOW TO USE EXAMPLES:** Use the provided examples only to understand the **correction pattern/logic**. Apply that logic to the input sentence.
+    # - **EXCEPTION:** Only replace the sentence exactly with the example output IF AND ONLY IF the input sentence is identical to the example's 'Incorrect' sentence."""
+    #
+    #     if extra:
+    #         instructions += f"\n\nADDITIONAL INSTRUCTION (apply strictly): {extra}"
+    #
+    #     # 캡션 전용 지침
+    #     if component_type == 'caption':
+    #         instructions += """
+    #
+    # CREDIT NORMALIZATION (CAPTIONS):
+    # - Exactly one final credit. Do not duplicate or combine credits.
+    # - Sentential captions (has a finite verb): end the sentence with a period, then use either 'Courtesy of [Company].' or an in‑house/agency token (e.g., 'Korea Times file.'); do NOT use '/'.
+    # - Non‑sentential captions (noun phrases): do not introduce a verb. Use ' / ' before the single credit (e.g., ' / Courtesy of [Company]' or ' / Korea Times file').
+    # - Do not place a period immediately before '/': replace '. /' with ' / '.
+    # - Canonicalize 'Korea Times photo' → 'Korea Times file'; never split as 'Korea Times / File'.
+    # - Do not combine 'Courtesy of ...' with any agency/in‑house credit (including 'Korea Times file')."""
+    #
+    #     # 한국 고유명 표기 교정은 본문/캡션에서만 사용 (헤드라인 제외)
+    #     if component_type in ('body', 'caption'):
+    #         instructions += """
+    #
+    # KOREAN-RELATED NOTATION (PALACE NAMES):
+    # - Rewrite 'Gyeongbokgung/Changdeokgung/Deoksugung/Changgyeonggung/Gyeonghuigung' to 'Gyeongbok/Changdeok/Deoksu/Changgyeong/Gyeonghui Palace'.
+    # - If it already appears as '<…>gung Palace', rewrite to '<Base> Palace' (e.g., 'Gyeongbokgung Palace' → 'Gyeongbok Palace').
+    # """
+    #
+    #     return instructions
 
     def _build_correction_input(
         self,
@@ -2364,43 +2431,53 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
                 if ctx:
                     date_context = ctx + "\n\n"
 
-        # 로컬 약어 도입쌍 탐지(현재 교정 요청 범위 내)
-        try:
-            local_pairs = self._detect_local_acronym_pairs({sid: sentences_to_correct[sid] for sid in sorted(sentences_to_correct.keys())})
-        except Exception:
-            local_pairs = []
+        # BODY 문장인지 확인 (B로 시작하는 문장이 있는지)
+        is_body = any(str(sid).startswith('B') for sid in sentences_to_correct.keys())
 
+        # 로컬 약어 도입쌍 탐지 - BODY 문장에만 적용
         acronym_block = ""
-        if local_pairs:
-            lines = [
-                "ACRONYM CONTEXT (within this request):",
-                "- Do NOT modify the sentences listed as 'First' below; keep the exact 'Long Form (ACRONYM)'.",
-                "- Only shorten repeated long forms in later sentences to the acronym.",
-                "- Preserve plurality exactly as first introduced: use the acronym exactly as shown in 'First'.",
-            ]
-            for p in local_pairs[:8]:
-                lines.append(
-                    f"- First: [{p['sentence_id']}] {p['long_form']} ({p['acronym']}) → later sentences must use {p['acronym']} only"
-                )
-            acronym_block = "\n" + "\n".join(lines) + "\n\n"
+        if is_body:
+            try:
+                # BODY 문장만 필터링하여 약어 탐지
+                body_sents = {sid: sentences_to_correct[sid] for sid in sorted(sentences_to_correct.keys()) if str(sid).startswith('B')}
+                local_pairs = self._detect_local_acronym_pairs(body_sents)
+            except Exception:
+                local_pairs = []
 
-        # 타이틀 컨텍스트 (A42) — 현재 교정 요청 범위 내 문장에서만 구성 (간결)
+            if local_pairs:
+                lines = [
+                    "ACRONYM CONTEXT (within this request):",
+                    "- Do NOT modify the sentences listed as 'First' below; keep the exact 'Long Form (ACRONYM)'.",
+                    "- Only shorten repeated long forms in later sentences to the acronym.",
+                    "- Preserve plurality exactly as first introduced: use the acronym exactly as shown in 'First'.",
+                ]
+                for p in local_pairs[:8]:
+                    lines.append(
+                        f"- First: [{p['sentence_id']}] {p['long_form']} ({p['acronym']}) → later sentences must use {p['acronym']} only"
+                    )
+                acronym_block = "\n" + "\n".join(lines) + "\n\n"
+
+        # 타이틀 컨텍스트 (A42) - BODY 문장에만 적용
         title_block = ""
-        try:
-            local_title_pairs = self._detect_local_title_pairs({sid: sentences_to_correct[sid] for sid in sorted(sentences_to_correct.keys())})
-        except Exception:
-            local_title_pairs = []
-        if local_title_pairs:
-            lines = [
-                "TITLE CONTEXT (A42, within this request):",
-                "- Do NOT change the 'First' line; keep the full 'Title + Name'.",
-                "- In later sentences, avoid repeating the title; use the surname (preferred) or 'the <title>'.",
-                "- Do NOT modify text inside quotation marks.",
-            ]
-            for t in local_title_pairs[:5]:
-                # 안내용으로 title은 소문자화하여 'the minister' 형태를 보여줌
-                lines.append(f"- First: [{t['sentence_id']}] {t['title']} {t['full_name']} → later: '{t['surname']}' or 'the {t['title'].lower()}'")
-            title_block = "\n" + "\n".join(lines) + "\n\n"
+        if is_body:
+            try:
+                # BODY 문장만 필터링하여 타이틀 탐지
+                body_sents = {sid: sentences_to_correct[sid] for sid in sorted(sentences_to_correct.keys()) if str(sid).startswith('B')}
+                local_title_pairs = self._detect_local_title_pairs(body_sents)
+            except Exception:
+                local_title_pairs = []
+
+            if local_title_pairs:
+                lines = [
+                    "TITLE CONTEXT (A42, within this request):",
+                    "- Do NOT change the 'First' line; keep the full 'Title + Name'.",
+                    "- In later sentences, avoid repeating the title; use the surname (preferred) or 'the <title>'.",
+                    "- Do NOT modify text inside quotation marks.",
+                ]
+                for t in local_title_pairs[:5]:
+                    # 안내용으로 title은 소문자화하여 'the minister' 형태를 보여줌
+                    lines.append(f"- First: [{t['sentence_id']}] {t['title']} {t['full_name']} → later: '{t['surname']}' or 'the {t['title'].lower()}'")
+                title_block = "\n" + "\n".join(lines) + "\n\n"
 
         content = f"{date_context}{acronym_block}{title_block}**SENTENCES TO CORRECT:**\n\n"
 
@@ -2428,29 +2505,43 @@ KOREAN-RELATED NOTATION (PALACE NAMES):
 
             content += "\n"
 
-        # TASK 블록 구성 (예시 준수 강조 및 추가 지시사항 포함)
-        # 캡션 여부 판단
-        try:
-            sids = list(sentences_to_correct.keys())
-            is_caption = any(str(s).startswith('C') for s in sids)
-        except Exception:
-            is_caption = False
-
+        # TASK 블록 (간소화 - JSON 규칙에 의존)
         task_lines = [
-            "**TASK:**",
+            # "**TASK:** Fix all violations listed above. Keep original content, apply only the correction patterns from examples. ",
+            "**TASK**"
             "1. For each sentence, apply ALL the violation fixes according to the rule descriptions.",
             "2. Return the FULLY CORRECTED sentence with all violations fixed.",
             "3. **Constraint:** Apply the style pattern from the '✓ Correct' examples, but **keep the specific words and details of the input sentence.** Do not copy the example text.",
         ]
-        if is_caption:
-            task_lines.append("4. CAPTION-SPECIFIC: Do not introduce a subject or verb; noun-phrase captions are acceptable. Preserve the original structure (phrase vs full sentence).")
-            task_lines.append("5. CAPTION-SPECIFIC: Ensure exactly one 'Courtesy of [Company]' credit at the end. If it already exists, do not add or duplicate it.")
-            task_lines.append("6. CAPTION-SPECIFIC: Do NOT add any weekday or date unless it appears in the original text; ") # only normalize existing date references per C12.
         if extra:
-            step_no = len(task_lines) + 1
-            task_lines.append(f"{step_no}. Additionally, follow this instruction strictly: {extra}")
+            task_lines.append(f"ADDITIONAL: {extra}")
 
         content += "\n".join(task_lines) + "\n"
+
+        # --- 기존 TASK 블록 (주석 처리) ---
+        # # TASK 블록 구성 (예시 준수 강조 및 추가 지시사항 포함)
+        # # 캡션 여부 판단
+        # try:
+        #     sids = list(sentences_to_correct.keys())
+        #     is_caption = any(str(s).startswith('C') for s in sids)
+        # except Exception:
+        #     is_caption = False
+        #
+        # task_lines = [
+        #     "**TASK:**",
+        #     "1. For each sentence, apply ALL the violation fixes according to the rule descriptions.",
+        #     "2. Return the FULLY CORRECTED sentence with all violations fixed.",
+        #     "3. **Constraint:** Apply the style pattern from the '✓ Correct' examples, but **keep the specific words and details of the input sentence.** Do not copy the example text.",
+        # ]
+        # if is_caption:
+        #     task_lines.append("4. CAPTION-SPECIFIC: Do not introduce a subject or verb; noun-phrase captions are acceptable. Preserve the original structure (phrase vs full sentence).")
+        #     task_lines.append("5. CAPTION-SPECIFIC: Ensure exactly one 'Courtesy of [Company]' credit at the end. If it already exists, do not add or duplicate it.")
+        #     task_lines.append("6. CAPTION-SPECIFIC: Do NOT add any weekday or date unless it appears in the original text; ") # only normalize existing date references per C12.
+        # if extra:
+        #     step_no = len(task_lines) + 1
+        #     task_lines.append(f"{step_no}. Additionally, follow this instruction strictly: {extra}")
+        #
+        # content += "\n".join(task_lines) + "\n"
 
         return content
 

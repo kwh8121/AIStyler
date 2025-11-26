@@ -437,12 +437,6 @@ Source article:
     reasoning_effort = _env_float('TRANSLATE_REASONING_EFFORT', None)
     text_verbosity = os.getenv('TRANSLATE_TEXT_VERBOSITY',  None)
 
-    input=[
-        {"role": "system", "content": system_text},
-        {"role": "user", "content": user_instruction},
-        {"role": "user", "content": text},
-    ],
-
     response = await _responses_create_async(
         model=translate_model,
         input_blocks=[
@@ -580,12 +574,6 @@ async def _openai_translate_with_prompts(
     include_reasoning = _env_bool('TRANSLATE_INCLUDE_REASONING', False)
     reasoning_effort = _env_float('TRANSLATE_REASONING_EFFORT', None)
     text_verbosity = os.getenv('TRANSLATE_TEXT_VERBOSITY',  None)
-
-    input=[
-        {"role": "system", "content": sys_text_final},
-        {"role": "user", "content": user_instruction},
-        {"role": "user", "content": text},
-    ],
 
     response = await _responses_create_async(
         model=translate_model,
@@ -819,14 +807,24 @@ async def translate_title(
     except Exception:
         pass
 
+    # 프롬프트 저장
+    try:
+        _dump_translation_prompt(
+            "headline_system",
+            system_text,
+            {"category": "TITLE", "style": style, "input_len": len(text or "")}
+        )
+        _dump_translation_prompt(
+            "headline_input",
+            text,
+            {"category": "TITLE", "style": style}
+        )
+    except Exception:
+        pass
+
     try:
         import time as _time
         _t0 = _time.time()
-
-        input=[
-            {"role": "system", "content": system_text},
-            {"role": "user", "content": text},
-        ],
 
         translate_model = os.getenv('TRANSLATE_MODEL', os.getenv('OPENAI_MODEL', 'gpt-5-chat-latest'))
         tool_choice = os.getenv('TRANSLATE_TOOL_CHOICE', 'required')

@@ -186,11 +186,16 @@
       "rule_id": "C02",
       "component": "caption",
       "group": "Person Description",
-      "description": "Mention the person's name first, followed by their location in the photo, and their role or title.",
+      "description": "For captions, the preferred order is: [Title/Role] [Name], [position in photo], [action]. If the title comes after the name with a comma, reorder so the title precedes the name. Position in photo (e.g., 'center', 'left', 'second from right') should come immediately after the name, before any action verb.",
       "examples": [
         {
           "incorrect": "Kim Tae-hyung, a member of BTS, front row second from right, smiles at the camera during a press event.",
           "correct": "K-pop boy band BTS member Kim Tae-hyung, front row second from right, smiles at the camera during a press event."
+        },
+        {
+          "incorrect": "Son Heung-min, the captain of Tottenham Hotspur, center, waves to fans.",
+          "correct": "Tottenham Hotspur Captain Son Heung-min, center, waves to fans.",
+          "comment": "Title moved before name, position stays after name"
         }
       ]
     },
@@ -198,11 +203,16 @@
       "rule_id": "C03",
       "component": "caption",
       "group": "Person Description",
-      "description": "Capitalize titles when they appear before a person's name (e.g., 'Chairman Lee'), but use lowercase when the title appears after the name (e.g., 'Lee, chairman'). Position determines capitalization.",
+      "description": "Capitalize titles when they appear before a person's name (e.g., 'Chairman Lee'), but use lowercase when the title appears after the name (e.g., 'Lee, chairman'). Position determines capitalization. This applies to all titles including: Chairman, President, CEO, Director, Minister, Governor, Captain, Executive Chair, etc.",
       "examples": [
         {
           "incorrect": "Samsung Electronics chairman Lee Jae-yong attends the meeting with global leaders.",
           "correct": "Samsung Electronics Chairman Lee Jae-yong attends the meeting with global leaders."
+        },
+        {
+          "incorrect": "Hyundai Motor executive chair Euisun Chung inspects the new facility.",
+          "correct": "Hyundai Motor Executive Chair Euisun Chung inspects the new facility.",
+          "comment": "Title before name -> capitalize all title words"
         }
       ]
     },
@@ -210,15 +220,17 @@
       "rule_id": "C04",
       "component": "caption",
       "group": "Person Description",
-      "description": "Simplify Subjects: If three or more people are listed in the same clause, mention only the key person (or two) in the first sentence. In the second sentence, introduce the remaining participants using a natural news-caption pattern such as 'Also present were ...'; when positional labeling is relevant, use 'from left, ...'.",
+      "description": "Simplify Subjects: Apply ONLY when three or more people are listed consecutively as subjects in a single clause. Mention only the key person in the first sentence, then introduce remaining participants in a second sentence. **STRICT CONDITIONS:** (1) Apply ONLY if the original text lists 3+ names as comma-separated subjects. (2) Do NOT apply if 'from left' already exists—use C06 instead. (3) Do NOT apply to sentences that only need repositioning of 'from left'.",
       "examples": [
         {
           "incorrect": "Prime Minister Han Duck-soo, Foreign Minister Cho Tae-yul, SK Chairman Chey Tae-won, and Industry Minister Ahn Duk-geun pose during an event in Seoul, Monday.",
-          "correct": "Prime Minister Han Duck-soo, center, poses with dignitaries during an event in Seoul, Monday. They are, from left, Foreign Minister Cho Tae-yul, SK Chairman Chey Tae-won, Han, and Industry Minister Ahn Duk-geun."
+          "correct": "Prime Minister Han Duck-soo, center, poses with dignitaries during an event in Seoul, Monday. Also present were Foreign Minister Cho Tae-yul, SK Chairman Chey Tae-won, and Industry Minister Ahn Duk-geun.",
+          "comment": "3+ people listed as subjects without 'from left' -> apply C04"
         },
         {
-          "incorrect": "Bank of Korea Governor Rhee Chang-yong, Finance Minister Choi Sang-mok, and Trade Minister Ahn Duk-geun deliver a keynote speech at an economic forum in Busan, Friday.",
-          "correct": "Bank of Korea Governor Rhee Chang-yong delivers a keynote speech at an economic forum in Busan, Friday. Also present were Finance Minister Choi Sang-mok and Trade Minister Ahn Duk-geun."
+          "incorrect": "They are, from left, John Smith, Jane Doe and Bob Wilson.",
+          "correct": "They are, from left, John Smith, Jane Doe and Bob Wilson.",
+          "comment": "NO CHANGE. 'from left' exists -> this is C06 territory, not C04."
         }
       ]
     },
@@ -238,15 +250,22 @@
       "rule_id": "C06",
       "component": "caption",
       "group": "Person Description",
-      "description": "If a sentence uses 'From left' with a list of names, place 'From left,' at the very beginning of that sentence. Do not place 'from left' mid‑sentence. Do not invent position markers (e.g., center/left/right/‘second from left’) or alter the original meaning or order; only move 'From left' to the start.",
+      "description": "When 'from left' appears mid-sentence after a name, move 'From left,' to the beginning of that sentence. **STRICT CONSTRAINTS:** (1) Do NOT change the subject or reorder people. (2) Do NOT split into multiple sentences. (3) Do NOT merge multiple sentences into one. (4) Do NOT add 'Also present were' or any new phrases. (5) Do NOT apply C04—this rule only repositions 'from left'. If 'from left' follows 'They are' or 'Pictured are', keep that phrase and place 'from left' right after it.",
       "examples": [
         {
-          "incorrect": "RM, from left, j-hope, Jungkook, and Jimin pose at the event.",
-          "correct": "From left, RM, j-hope, Jungkook, and Jimin pose at the event."
+          "incorrect": "Minister of Finance Choo Kyung-ho, from left, Prime Minister Han Duck-soo and BOK Governor Rhee discuss the agenda.",
+          "correct": "From left, Minister of Finance Choo Kyung-ho, Prime Minister Han Duck-soo and BOK Governor Rhee discuss the agenda.",
+          "comment": "Only move 'from left' to start. Do NOT change subject, reorder names, or add phrases."
         },
         {
-          "incorrect": "They are, from left, Alice Kim, Bob Lee and Charlie Park.",
-          "correct": "From left, Alice Kim, Bob Lee and Charlie Park."
+          "incorrect": "They are RM, from left, j-hope, Jungkook, and Jimin.",
+          "correct": "They are, from left, RM, j-hope, Jungkook, and Jimin.",
+          "comment": "Keep 'They are' intact, place 'from left' after it."
+        },
+        {
+          "incorrect": "Cast members attend a press conference. Pictured are actor A, from left, actress B and director C.",
+          "correct": "Cast members attend a press conference. Pictured are, from left, actor A, actress B and director C.",
+          "comment": "Two-sentence structure preserved. Only reposition 'from left' within the second sentence. Do NOT merge into one sentence."
         }
       ]
     },
@@ -254,19 +273,22 @@
       "rule_id": "C07",
       "component": "caption",
       "group": "Date Processing",
-      "description": "**Handle ALL date-related tasks (Logic, Position, Format). Follow strict priority:**\n\n1. **Step 1: The 'List Check' (GATEKEEPER):**\n   - Look at the **'Date context (within 7 days, KST)'** list provided in the input.\n   - **Check:** Does the date in the sentence (e.g., Nov. 10) appear in that specific list?\n   - **NO (Not in list):** STOP conversion. Keep the absolute date format (e.g., 'Nov. 10'). Proceed to Step 3.\n   - **YES (In list):** Proceed to Step 2.\n\n2. **Step 2: Relative Conversion (Strict Lookup):**\n   - **CRITICAL:** Do NOT calculate the weekday. **Look at the list** and find the matching entry (e.g., '11-26 (Wed)').\n   - **Extract:** Use the weekday code from the parentheses (e.g., 'Wed' → 'Wednesday').\n   - **Logic (Last/Next):** Compare with Article Date.\n     - **PAST:** If before article date, MUST write 'last <Weekday>'.\n     - **FUTURE:** If after article date, write '<Weekday>' only.\n\n3. **Step 3: Positioning & Formatting:**\n   - **Position:** Move the date phrase immediately after the location **IF AND ONLY IF** a specific location exists.\n   - **No Invention:** If NO location exists, keep the date where it is.\n   - **Format:** Remove 'on'. Use a comma before the date **ONLY IF** it follows a location.",
+      "description": "**Strict Context Lookup:** Convert absolute dates to weekdays ONLY if the date key exists in the provided 'Date context' list.\n\n**STEP 1: NORMALIZE TO KEY (MM-DD)**\n- Convert the caption date to 'MM-DD' format (e.g., 'Nov. 29' → '11-29', 'Dec. 1' → '12-01').\n\n**STEP 2: EXACT KEY LOOKUP**\n- Search for this 'MM-DD' key in the list.\n- **NOT FOUND:** Do NOT convert. Keep original text.\n- **FOUND:** Proceed to STEP 3.\n\n**STEP 3: COMPARE WITH ARTICLE DATE (Critical)**\n- Compare the Date's 'MM-DD' with the Article Date's 'MM-DD' (11-26).\n- **CASE A (Future/Same):** If Date >= 11-26 (e.g., 11-29, 12-01)\n  → Output **'<Weekday>' ONLY**. (NEVER use 'last').\n- **CASE B (Past):** If Date < 11-26 (e.g., 11-23, 11-24)\n  → Output **'last <Weekday>'**.\n\n**STEP 4: FORMATTING**\n- Remove 'on'.\n- Move the date phrase after the location.",
       "examples": [
         {
-          "incorrect": "A warning was issued on Nov. 10. [Date context: 11-18 to 11-30]",
-          "correct": "A warning was issued Nov. 10. [Nov. 10 NOT in list -> Keep absolute date]"
+          "incorrect": "Participants arrive at BEXCO in Busan on Dec. 1.",
+          "correct": "Participants arrive at BEXCO in Busan Monday.",
+          "comment": "[Future Test] 12-01 > 11-26. Future date. Use 'Monday' (NO 'last')."
         },
         {
-          "incorrect": "The event starts on Nov. 26. [Date context includes: 11-26 (Wed)]",
-          "correct": "The event starts Wednesday. [List says (Wed) -> Wednesday]"
+          "incorrect": "Demonstrators march through downtown Seoul on Nov. 29.",
+          "correct": "Demonstrators march through downtown Seoul Saturday.",
+          "comment": "[Future Test] 11-29 > 11-26. Future date. Use 'Saturday' (NO 'last')."
         },
         {
-          "incorrect": "The fire broke out, Nov. 18. [Date context includes: 11-18 (Tue)]",
-          "correct": "The fire broke out last Tuesday. [List says (Tue) + Past -> last Tuesday]"
+          "incorrect": "Students attend a graduation ceremony at City Hall on Nov. 23.",
+          "correct": "Students attend a graduation ceremony at City Hall last Sunday.",
+          "comment": "[Past Test] 11-23 < 11-26. Past date. Use 'last Sunday'."
         }
       ]
     },
@@ -279,6 +301,19 @@
         {
           "incorrect": "South Korean President Yoon Suk-yeol greets President Joe Biden at a summit in Seoul.",
           "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden at a summit in Seoul."
+        }
+      ]
+    },
+    "C11": {
+      "rule_id": "C11",
+      "component": "caption",
+      "group": "Date Formatting",
+      "description": "Format absolute dates based on specificity without converting them.\n1. Use '**in**' before a date containing ONLY Month and Year (e.g., '... in Seoul **in** May 2023').\n2. Use a **comma** before a specific date containing a Day (e.g., '... in Seoul**,** May 17').\n3. Remove 'on' if present.",
+      "examples": [
+        {
+          "incorrect": "Construction began in Seoul, May 2023.",
+          "correct": "Construction began in Seoul in May 2023.",
+          "comment": "Date has Month+Year only (no specific day), so use 'in' instead of a comma."
         }
       ]
     },
@@ -376,15 +411,27 @@
       "rule_id": "C22",
       "component": "caption",
       "group": "Number Notation",
-      "description": "Do not abbreviate the months of March, April, May, June and July. Abbreviate the rest.",
+      "description": "AP-style month abbreviations when followed by a date:\n\n**MUST abbreviate:** January→Jan., February→Feb., August→Aug., September→Sept., October→Oct., November→Nov., December→Dec.\n**Do NOT abbreviate:** March, April, May, June, July (keep full name)",
       "examples": [
         {
-          "incorrect": "The meeting is scheduled for November 15, 2023.",
-          "correct": "The meeting is scheduled for Nov. 15, 2023."
+          "incorrect": "October 22",
+          "correct": "Oct. 22"
         },
         {
-          "incorrect": "The meeting is scheduled for Apr. 15, 2023.",
-          "correct": "The meeting is scheduled for April 15, 2023."
+          "incorrect": "November 15",
+          "correct": "Nov. 15"
+        },
+        {
+          "incorrect": "December 1",
+          "correct": "Dec. 1"
+        },
+        {
+          "incorrect": "January 10",
+          "correct": "Jan. 10"
+        },
+        {
+          "incorrect": "Apr. 15",
+          "correct": "April 15"
         }
       ]
     },

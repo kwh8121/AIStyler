@@ -188,11 +188,20 @@ def _split_sentences_nltk(text: str) -> List[str]:
 def _build_sentence_corrections(orig_component_text: str, violations: List, category: ArticleCategory, corrected_component_text: Optional[str] = None) -> Dict[int, Dict]:
     """Return mapping of sentence_index -> {original, corrected, violations} using NLTK and per-violation corrections.
 
-    - Bases indices on the original component's NLTK segmentation
+    - Title/Caption: 문장 분리 없이 전체 텍스트를 하나의 문장(index 0)으로 처리
+    - Body: NLTK로 문장 분리하여 각각 처리
     - For indices with a correction in violations, use that corrected sentence; otherwise, keep original
     """
-    before_sents = _split_sentences_nltk(orig_component_text or "")
-    corrected_sents = _split_sentences_nltk(corrected_component_text or "") if corrected_component_text is not None else []
+    # Title/Caption은 문장 분리하지 않고 전체를 하나의 문장으로 처리
+    if category in (ArticleCategory.TITLE, ArticleCategory.CAPTION):
+        orig_text = (orig_component_text or "").strip()
+        corr_text = (corrected_component_text or "").strip() if corrected_component_text else orig_text
+        before_sents = [orig_text] if orig_text else []
+        corrected_sents = [corr_text] if corr_text else []
+    else:
+        # Body는 기존처럼 NLTK로 문장 분리
+        before_sents = _split_sentences_nltk(orig_component_text or "")
+        corrected_sents = _split_sentences_nltk(corrected_component_text or "") if corrected_component_text is not None else []
 
     # Build violation map by zero-based sentence index in the selected component
     component_prefix = _prefix_for_category(category)

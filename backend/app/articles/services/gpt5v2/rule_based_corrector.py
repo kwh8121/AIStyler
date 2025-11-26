@@ -859,9 +859,9 @@ class RuleBasedCorrector:
         return corrected, corrections
 
     def _apply_c09_pose_for_photo(self, text: str, component: str) -> Tuple[str, List[Correction]]:
-        """C09 - pose(s) for a photo → pose"""
+        """C09 - pose(s) for (a) photo(s)/picture(s) → pose"""
         corrections: List[Correction] = []
-        pattern = r"\bposes?\s+for\s+(?:a\s+)?photo\b"
+        pattern = r"\bposes?\s+for\s+(?:a\s+)?(?:photo|picture)s?\b"
 
         matches = list(re.finditer(pattern, text, flags=re.IGNORECASE))
         corrected = text
@@ -884,27 +884,40 @@ class RuleBasedCorrector:
         """C24 - 크레딧 마침표 (Yonhap, Courtesy of, Korea Times 등)"""
         corrections = []
 
-        # 크레딧 키워드들
+        # 크레딧 키워드들 (longer patterns first to avoid partial matches)
         credit_keywords = [
-            'Yonhap', 'Korea Times', 'Courtesy of', 'Reuters',
-            'AP', 'AFP', 'Getty Images'
+            'Korea Times file', 'Korea Times', 'Getty Images', 'Courtesy of',
+            'Yonhap', 'Reuters', 'Bloomberg', 'EPA', 'AFP', 'AP'
         ]
 
-       # Check if text ends with period
-        if text.strip().endswith('.'):
+        # Normalize text - strip whitespace and trailing quotes
+        normalized = text.strip()
+
+        # Track if we need to restore trailing quote
+        trailing_quote = ''
+        if normalized.endswith('"') or normalized.endswith("'"):
+            trailing_quote = normalized[-1]
+            normalized = normalized[:-1].strip()
+
+        # Check if text ends with period (after removing quote)
+        if normalized.endswith('.'):
             # Check if any credit keyword exists at the end
             for keyword in credit_keywords:
-                # 크레딧 키워드 바로 뒤에 마침표가 있는지 확인
-                pattern = rf'\b{re.escape(keyword)}\.$'
-                if re.search(pattern, text.strip(), re.IGNORECASE):
+                # 크레딧 키워드 바로 뒤에 마침표가 있는지 확인 (공백 허용)
+                pattern = rf'(?:^|\s){re.escape(keyword)}\s*\.$'
+                if re.search(pattern, normalized, re.IGNORECASE):
                     original = text
-                    corrected = text.strip()[:-1]  # 마침표 제거
+                    # 마침표 제거 (trailing whitespace도 정리)
+                    corrected = re.sub(rf'(\s*{re.escape(keyword)})\s*\.$', r'\1', normalized, flags=re.IGNORECASE)
+                    # Restore trailing quote if existed
+                    if trailing_quote:
+                        corrected = corrected + trailing_quote
                     corrections.append(Correction(
                         rule_id='C24',
                         component=component,
                         original=original,
                         corrected=corrected,
-                        position=len(text.strip()) - 1
+                        position=len(normalized) - 1
                     ))
                     text = corrected
                     break
