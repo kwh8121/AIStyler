@@ -841,26 +841,9 @@ class RuleBasedCorrector:
 
         text = pattern_units.sub(repl_units, text)
 
-        # 2) 단위 없는 1~9 숫자 → 철자
-        #    (뒤에 단위 패턴이 오지 않는 경우만)
-        pattern_plain_digit = re.compile(rf"\b([1-9])\b(?!\s+(?:{unit_pattern})\b)")
-
-        def repl_plain(m: re.Match) -> str:
-            original = m.group(0)
-            digit = m.group(1)
-            word = self._digit_to_word.get(digit)
-            if not word:
-                return original
-            corrections.append(Correction(
-                rule_id='A28',
-                component=component,
-                original=original,
-                corrected=word,
-                position=m.start()
-            ))
-            return word
-
-        text = pattern_plain_digit.sub(repl_plain, text)
+        # 2) 단위 없는 1~9 숫자 → 철자 변환은 LLM(A28)이 담당
+        #    정규식으로 처리 시 예외 케이스가 너무 많음 (시간, 날짜, 점수, 버전, 주소 등)
+        #    LLM이 컨텍스트를 파악하여 적절히 처리하도록 함
 
         # 3) scale(hundred/thousand/million/billion) 포함 숫자 단어 구문(단위 없음) → 숫자
         #    예: "nine hundred workers" → "900 workers"
@@ -1450,14 +1433,18 @@ class RuleBasedCorrector:
 
     def _apply_c07_date_processing(self, text: str, component: str,
                                    article_datetime: datetime) -> Tuple[str, List[Correction]]:
-        """C07 - Date Processing (Within 7 days conversion)
-        
-        Logic:
-        1. Detect dates (Nov. 24, 11/24, etc.)
-        2. Compare with article_datetime
-        3. If within -7 days (past): Convert to "last [Weekday]"
-        4. If within +7 days (future/same): Convert to "[Weekday]"
-        5. Remove 'on' preposition
+        """C07 - Date Processing (Within 7 days conversion - regex tier)
+
+        Logic (strict, conservative):
+        1. Detect absolute dates in Month Day[, Year] format (e.g., 'Nov. 24', 'November 24, 2024').
+           - Numeric forms like '11/24' are intentionally restricted to avoid false positives
+             on fractions or scores in AP-style text.
+        2. Compare with article_datetime.
+        3. If within -6 to -1 days (past): Convert to 'last [Weekday]'.
+        4. If within 0 to +6 days (article date or future): Convert to '[Weekday]'.
+        5. Do NOT touch:
+           - Existing weekday+date combos (e.g., 'Monday, Nov. 24').
+           - Date ranges (e.g., 'Nov. 24 to 30', 'Nov. 24-30').
         """
         corrections = []
         corrected = text
@@ -1481,8 +1468,10 @@ class RuleBasedCorrector:
         month_names = "January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\."
         pat_text = rf'(?P<prep>on\s+)?\b(?P<month>{month_names})\s+(?P<day>\d{{1,2}})(?:,?\s*(?P<year>\d{{4}}))?\b'
         
-        # Pattern 2: Numeric Month (11/24, 11-24)
-        pat_num = r'(?P<prep>on\s+)?\b(?P<month>\d{1,2})[/-](?P<day>\d{1,2})(?:[/-](?P<year>\d{4}))?\b'
+        # Pattern 2: Numeric Month (11/24/2024, 11-24-2024)
+        # - 보수적으로 운영: 'on ' 접두사 + 연도가 명시된 케이스만 처리
+        # - 분수(1/2), 점수(3-2) 등 비-날짜 패턴 오탐을 줄이기 위함
+        pat_num = r'(?P<prep>on\s+)\b(?P<month>\d{1,2})[/-](?P<day>\d{1,2})[/-](?P<year>\d{4})\b'
 
         # Helper to process matches
         def get_closest_date(target_month, target_day, explicit_year=None):
@@ -1509,6 +1498,19 @@ class RuleBasedCorrector:
             day_raw = int(match.group('day'))
             year_raw = match.group('year')
 
+            start, end = match.start(), match.end()
+
+            # 0) 이미 요일이 앞에 붙은 패턴 보호: "Monday, Nov. 24"
+            #    직전 20자 내에 "Weekday,"가 있으면 이 매치는 건너뜀
+            before = corrected[max(0, start - 32):start]
+            if re.search(r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*,\s*$', before):
+                return
+
+            # 0-1) 날짜 범위의 앞쪽 날짜 보호: "Nov. 24 to 30", "Nov. 24-30", "Nov. 24 through 30"
+            after = corrected[end:end + 16]
+            if re.match(r'\s*(to|-|through)\b', after, flags=re.IGNORECASE):
+                return
+
             # Parse Month
             if is_numeric:
                 month_idx = int(month_raw)
@@ -1531,12 +1533,12 @@ class RuleBasedCorrector:
             target_str = ""
             weekday = event_date.strftime("%A") # e.g., Monday
 
-            # Logic: Within 7 days range (-6 to +6)
+            # Logic: Within 7 days range (-6 to +6) — strict (exclude exactly 7 days)
             # User Rule: 
             # Past (< 0): "last [Weekday]"
             # Future/Same (>= 0): "[Weekday]"
             
-            # 범위를 7일로 설정 (필요시 조정 가능)
+            # 범위를 7일 미만(-6 ~ +6)으로 설정 (정확히 7일 전/후는 제외)
             if -7 < diff_days < 0:
                 target_str = f"last {weekday}"
             elif 0 <= diff_days < 7:

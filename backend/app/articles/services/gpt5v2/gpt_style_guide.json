@@ -551,7 +551,7 @@
       "rule_id": "A07",
       "component": "body",
       "group": "Grammar Rules",
-      "description": "Currency conversion: Convert only the first occurrence of 'won' to dollars in parentheses. For any later 'won' amounts in the article/body, do not add a dollar conversion; if parentheses already appear, remove them and keep only the won amount. Apply to both '10,000 won' and '10,000won'.",
+      "description": "Currency conversion: Convert only the first occurrence of 'won' to dollars in parentheses. This applies to all formats: '50,000 won', '5 million won', '1.2 billion won', etc. For any later 'won' amounts in the article/body, do not add a dollar conversion; if parentheses already appear, remove them and keep only the won amount.",
       "examples": [
         {
           "incorrect": "The product costs 50,000 won.",
@@ -631,11 +631,21 @@
       "rule_id": "A13",
       "component": "body",
       "group": "Grammar Rules",
-      "description": "Numbers under 10 must be spelled out. Make explicit that numbers 10 and above, including those representing age, time, measurements, and percentages, must always be numerals.",
+      "description": "**Number Spelling Rules (1-9):** Spell out numbers 1-9 in general text, but KEEP AS NUMERALS in the following contexts:\n\n**EXCEPTIONS - Always use numerals for:**\n1. **Times:** 3 a.m., 5 p.m., 9:30\n2. **Dates:** Dec. 3, March 5, the 7th\n3. **Ages:** 5 years old, age 8\n4. **Scores/Records:** 3-2 victory, 5-0 lead\n5. **Versions/Models:** iPhone 5, Windows 7, version 3.0\n6. **Addresses:** 5 Main St., Room 3\n7. **Rankings:** No. 3, ranked 5th\n8. **Measurements with units:** 5 percent, 3 kilometers, 8 degrees\n9. **Currency amounts:** $5, 3 million won\n10. **Ratios/Statistics:** 3:1 ratio, 5 out of 100\n11. **Page/Chapter numbers:** page 5, Chapter 3\n12. **Serial/List numbers:** Article 5, Section 3\n\n**Numbers 10 and above:** Always use numerals regardless of context.",
       "examples": [
         {
-          "incorrect": "5 employees and twelve clients attended. Nearly 3 in 10 voters supported the plan. Almost 4 people agreed. About 2 out of 12 cases were confirmed.",
-          "correct": "Five employees and 12 clients attended. Nearly three in 10 voters supported the plan. Almost four people agreed. About two out of 12 cases were confirmed."
+          "incorrect": "5 employees and twelve clients attended. Nearly 3 in 10 voters supported the plan. Almost 4 people agreed.",
+          "correct": "Five employees and 12 clients attended. Nearly three in 10 voters supported the plan. Almost four people agreed."
+        },
+        {
+          "incorrect": "The meeting starts at three p.m. on Dec. three.",
+          "correct": "The meeting starts at 3 p.m. on Dec. 3.",
+          "comment": "Times and dates always use numerals"
+        },
+        {
+          "incorrect": "Team won with a five-two score using iPhone five.",
+          "correct": "Team won with a 5-2 score using iPhone 5.",
+          "comment": "Scores and product versions always use numerals"
         }
       ]
     },

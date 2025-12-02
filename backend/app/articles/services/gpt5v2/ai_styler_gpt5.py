@@ -1452,6 +1452,8 @@ class AIStylerGPT5Sentence:
 OUTPUT FORMAT:
 For each violation found, report: sentence_id ("{sentence_prefix}1", "{sentence_prefix}2", ...), rule_id, component ("{component_type}"), rule_description, violation_type (use the group name in parentheses).
 
+IMPORTANT: When in doubt, REPORT the potential violation. It is better to over-report than to miss violations. The correction stage will filter out false positives.
+
 If no violations, return empty array [].
 {('ADDITIONAL: ' + extra) if extra else ''}"""
         return instructions
@@ -1618,7 +1620,7 @@ If no violations, return empty array [].
     ### **Instructions & Output Format**
 
     1.  **Systematic Review:** Carefully check each sentence against all relevant rules in the guide.
-    2.  **Confident Detection:** Only report violations you are certain about, using the examples as a reference.
+    2.  **When in Doubt, REPORT:** It is better to over-report potential violations than to miss them. The correction stage will filter out false positives.
     3.  **JSON Output:** For each violation, provide a JSON object with the following structure. If a sentence has multiple violations, create a separate object for each.
 
         ```json
@@ -1699,14 +1701,15 @@ RULES ({rule_range}):{chr(10)}"""
         if simple_rules:
             instructions += '\n'.join(simple_rules) + '\n'
 
-        # 압축된 지시사항 (9개 → 4개)
+        # 압축된 지시사항 (9개 → 5개)
         instructions += f"""
 TASK:
 1. Check all sentences vs rules above
 2. Report: sentence_id (e.g. T1/B1/C1), rule_id, component ("{component_type}"), rule_description, violation_type (exact group name)
 3. Multiple violations per sentence = multiple entries
-4. Empty array [] if none found
-{('5. Additionally, follow this instruction strictly: ' + extra) if extra else ''}"""
+4. When in doubt, REPORT. Over-report > miss violations. Correction stage filters false positives.
+5. Empty array [] if none found
+{('6. Additionally, follow this instruction strictly: ' + extra) if extra else ''}"""
 
         return instructions
 
