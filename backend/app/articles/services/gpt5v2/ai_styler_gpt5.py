@@ -489,6 +489,58 @@ class AIStylerGPT5Sentence:
             logger.debug("[v2] dump failed for %s: %s", kind, exc)
 
     def _format_kst_date_context(self, article_date: Optional[str]) -> str:
+        """
+        [Multi-Key Lookup Table]
+        LLM이 날짜 포맷을 변환하지 않도록, 가능한 모든 텍스트 패턴(Full, Abbr, Numeric)을 키로 제공합니다.
+        LLM은 단순 '찾기(Ctrl+F)'만 수행하면 됩니다.
+        """
+        if not article_date:
+            return ""
+        try:
+            base = datetime.strptime(str(article_date).split('T')[0], "%Y-%m-%d").date()
+        except Exception:
+            return f"Article Date: {article_date}"
+
+        dows = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        month_full = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        month_abbr = ["", "Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."]
+
+        lines = []
+        lines.append(f"Article Date: {base.isoformat()} ({dows[base.weekday()][:3]})")
+        lines.append("[STRICT REPLACEMENT TABLE]")
+        lines.append("Instructions: If you find ANY of the 'Patterns' in the text, replace it EXACTLY with the 'Replacement'.")
+
+        # ±7일 범위 생성
+        for offset in range(-6, 7):
+            d = base + timedelta(days=offset)
+            
+            # 1. Replacement 값 결정 (Python이 정답 확정)
+            weekday_name = dows[d.weekday()]
+            if d < base:
+                replacement = f"last {weekday_name}" # 과거
+            else:
+                replacement = f"{weekday_name}"      # 미래/오늘 (절대 last 금지)
+
+            # 2. 가능한 모든 텍스트 패턴 생성 (Multi-Keys)
+            # 패턴 1: Dec. 3 (Abbr)
+            pat_abbr = f"{month_abbr[d.month]} {d.day}"
+            # 패턴 2: December 3 (Full)
+            pat_full = f"{month_full[d.month]} {d.day}"
+            # 패턴 3: 12/03 (Numeric)
+            pat_num = f"{d.month}/{d.day:02d}"
+            # 패턴 4: 12-03 (Standard)
+            pat_std = f"{d.month:02d}-{d.day:02d}"
+
+            # 키 목록을 하나의 문자열로 결합
+            keys = sorted(list(set([pat_abbr, pat_full, pat_num, pat_std]))) # 중복제거
+            keys_str = " | ".join([f"[{k}]" for k in keys])
+
+            # 줄 생성: Matches: [Dec. 3] | [December 3] -> Use: "Wednesday"
+            lines.append(f"Matches: {keys_str}  ->  Use: \"{replacement}\"")
+
+        return "\n".join(lines)
+
+    def _format_kst_date_context1(self, article_date: Optional[str]) -> str:
         """Return a compact KST date context block with MM-DD format.
 
         - Input: article_date in ISO (YYYY-MM-DD) or None
@@ -824,23 +876,16 @@ class AIStylerGPT5Sentence:
         except Exception:
             self._extra_instructions = None
 
-        # 사전 스냅샷: 정규식 적용 전 문장 맵 (history용 원문 문장 보존)
+        # 사전 스냅샷: 원문 문장 맵 (history용 원문 문장 보존)
         try:
             components_before = self._extract_components(article_text)
             numbered_sentences_before, sentence_map_before = self._create_numbered_sentences(components_before)
         except Exception:
             numbered_sentences_before, sentence_map_before = ({'title': [], 'body': [], 'caption': []}, {})
 
-        # 1단계: 정규식 기반 교정
-        logger.info("1단계: 정규식 기반 교정 처리 중...")
-        regex_result = self.regex_corrector.correct_article(article_text, article_date)
-        regex_corrected_text = regex_result['corrected_text']
-        regex_corrections = regex_result['corrections']
-        logger.info(f"정규식 교정 완료 - {len(regex_corrections)}개 수정")
-
-        # 2단계: 컴포넌트 추출 및 문장 분할
-        logger.info("2단계: 문장 분할 및 번호 부여...")
-        components = self._extract_components(regex_corrected_text)
+        # 1단계: 컴포넌트 추출 및 문장 분할 (정규식 적용 전)
+        logger.info("1단계: 문장 분할 및 번호 부여...")
+        components = self._extract_components(article_text)
         numbered_sentences, sentence_map = self._create_numbered_sentences(components)
 
         total_sentences = sum(len(sents) for sents in numbered_sentences.values())
@@ -861,15 +906,15 @@ class AIStylerGPT5Sentence:
 
         self._acronym_memory = None
 
-        # 3단계: GPT-5 AI 기반 교정
-        logger.info("3단계: GPT-5 AI 기반 교정 처리 중...")
+        # 2단계: GPT-5 AI 기반 교정
+        logger.info("2단계: GPT-5 AI 기반 교정 처리 중...")
         ai_result = self._ai_correct_sentences(numbered_sentences, sentence_map, article_date)
 
         ai_violations = ai_result['violations']
         logger.info(f"AI 교정 완료 - {len(ai_violations)}개 위반 발견 및 수정")
 
-        # 4단계: 문장 교체 및 기사 재구성
-        logger.info("4단계: 문장 교체 및 기사 재구성...")
+        # 3단계: 문장 교체 및 기사 재구성
+        logger.info("3단계: 문장 교체 및 기사 재구성...")
         # 로컬 약어 강제 규칙 생성(BODY 내 첫 도입 이후 문장만 적용)
         try:
             local_enforce = self._build_local_acronym_enforcement_map(numbered_sentences)
@@ -889,10 +934,20 @@ class AIStylerGPT5Sentence:
             local_title_enforcement=title_enforce,
         )
 
-        # 기사 재구성
-        final_text = f"[TITLE]{corrected_components['title']}[/TITLE]"
-        final_text += f"[BODY]{corrected_components['body']}[/BODY]"
-        final_text += f"[CAPTION]{corrected_components['caption']}[/CAPTION]"
+        # 기사 재구성 (임시)
+        intermediate_text = f"[TITLE]{corrected_components['title']}[/TITLE]"
+        intermediate_text += f"[BODY]{corrected_components['body']}[/BODY]"
+        intermediate_text += f"[CAPTION]{corrected_components['caption']}[/CAPTION]"
+
+        # 4단계: 정규식 기반 후처리 (LLM 교정 후 적용)
+        logger.info("4단계: 정규식 기반 후처리 중...")
+        regex_result = self.regex_corrector.correct_article(intermediate_text, article_date)
+        regex_corrections = regex_result.get('corrections', [])
+        final_text = regex_result.get('corrected_text', intermediate_text)
+        logger.info(f"정규식 후처리 완료 - {len(regex_corrections)}개 교정 적용")
+
+        # 최종 컴포넌트 추출 (정규식 적용 후)
+        final_components = self._extract_components(final_text)
 
         # 결과 통합
         all_violations = []
@@ -957,8 +1012,9 @@ class AIStylerGPT5Sentence:
         #     pass
 
         # 최종 문장 맵을 기반으로 corrected_sentence 보정 및 무효 위반 제거
+        # (정규식 적용 후의 최종 컴포넌트 사용)
         try:
-            final_numbered, final_sentence_map = self._create_numbered_sentences(corrected_components)
+            final_numbered, final_sentence_map = self._create_numbered_sentences(final_components)
         except Exception:
             final_sentence_map = {}
 
@@ -1140,6 +1196,29 @@ class AIStylerGPT5Sentence:
 
         # Post-processing: Component 불일치 필터링
         validated_detections = self._validate_component_match(all_detections)
+
+        # [날짜 패턴 강제 포함] 캡션/본문에서 날짜 패턴(Month + Day)이 있는 문장은 교정 대상에 강제 추가
+        # Detection 단계에서 추가해야 _merge_detection_and_correction에서 처리됨
+        import re
+        date_pattern = re.compile(
+            r'\b(?:Jan\.?|Feb\.?|Mar\.?|Apr\.?|May|June?|July?|Aug\.?|Sept?\.?|Oct\.?|Nov\.?|Dec\.?)\s+\d{1,2}\b',
+            re.IGNORECASE
+        )
+        detected_sids = set(d['sentence_id'] for d in validated_detections)
+        for sid, sent in sentence_map.items():
+            if sid in detected_sids:
+                continue  # 이미 검출된 문장은 스킵
+            # if sid.startswith('C') or sid.startswith('B'):
+            #     if date_pattern.search(sent):
+            #         component = 'caption' if sid.startswith('C') else 'body'
+            #         validated_detections.append({
+            #             'sentence_id': sid,
+            #             'rule_id': 'DATE',  # 날짜 처리용 플레이스홀더
+            #             'component': component,
+            #             'rule_description': 'Date pattern detected - apply 7-day rule',
+            #             'violation_type': 'date_processing'
+            #         })
+            #         logger.info(f"  [Date Pattern] Forcing {sid} into detection: {sent[:60]}...")
 
         return validated_detections
 
@@ -1650,41 +1729,41 @@ TASK:
         component_display = component_type.upper()
 
         date_context = ""
-        # 캡션은 로컬 기준일 + 기사 기준일(요일 포함)을 간단히 주입
-        if component_type == 'caption':
-            local_ref = self._infer_local_reference_date(sentences, article_date)
-            ctx_block = None
-            if article_date:
-                try:
-                    ctx_block = self._format_kst_date_context(article_date)
-                except Exception:
-                    ctx_block = f"Article Date (KST): {article_date}"
-            if local_ref and ctx_block:
-                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
-            elif local_ref:
-                date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
-            elif ctx_block:
-                date_context = f"\n\n{ctx_block}"
-        elif component_type == 'body':
-            # 본문에도 동일한 날짜 컨텍스트 제공 (필요 시 상대표현 정합성 개선)
-            local_ref = self._infer_local_reference_date(sentences, article_date)
-            ctx_block = None
-            if article_date:
-                try:
-                    ctx_block = self._format_kst_date_context(article_date)
-                except Exception:
-                    ctx_block = f"Article Date (KST): {article_date}"
-            if local_ref and ctx_block:
-                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
-            elif local_ref:
-                date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
-            elif ctx_block:
-                date_context = f"\n\n{ctx_block}"
-        else:
-            if article_date:
-                ctx = self._format_kst_date_context(article_date)
-                if ctx:
-                    date_context = "\n\n" + ctx
+        # [주석처리] Date Context 비활성화 - LLM이 직접 오늘 날짜를 검색하도록 변경
+        # C07 규칙에서 LLM이 오늘 날짜를 확인하고 7일 이내 여부를 판단함
+        # if component_type == 'caption':
+        #     local_ref = self._infer_local_reference_date(sentences, article_date)
+        #     ctx_block = None
+        #     if article_date:
+        #         try:
+        #             ctx_block = self._format_kst_date_context(article_date)
+        #         except Exception:
+        #             ctx_block = f"Article Date (KST): {article_date}"
+        #     if local_ref and ctx_block:
+        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
+        #     elif local_ref:
+        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
+        #     elif ctx_block:
+        #         date_context = f"\n\n{ctx_block}"
+        # elif component_type == 'body':
+        #     local_ref = self._infer_local_reference_date(sentences, article_date)
+        #     ctx_block = None
+        #     if article_date:
+        #         try:
+        #             ctx_block = self._format_kst_date_context(article_date)
+        #         except Exception:
+        #             ctx_block = f"Article Date (KST): {article_date}"
+        #     if local_ref and ctx_block:
+        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
+        #     elif local_ref:
+        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
+        #     elif ctx_block:
+        #         date_context = f"\n\n{ctx_block}"
+        # else:
+        #     if article_date:
+        #         ctx = self._format_kst_date_context(article_date)
+        #         if ctx:
+        #             date_context = "\n\n" + ctx
 
         # 사용자 추가 지침이 있으면 상단에 명시
         extra = getattr(self, '_extra_instructions', None)
@@ -1787,6 +1866,9 @@ TASK:
                 detections_by_component['body'].append(d)
             elif sentence_id.startswith('C'):
                 detections_by_component['caption'].append(d)
+
+        # 날짜 패턴 강제 포함은 _detect_violations_async에서 이미 수행됨
+        # 여기서는 detections에 이미 DATE rule_id가 포함되어 있음
 
         # 추가 지시사항이 있는 경우, 탐지 결과가 비어도 모든 문장을 교정 대상으로 폴백
         extra = getattr(self, '_extra_instructions', None)
@@ -2005,6 +2087,11 @@ TASK:
             sentence_id = detection['sentence_id']
             # Canonicalize rule ID if this rule is an alias (e.g., A43 with rule_id="A20")
             rid = detection.get('rule_id')
+
+            # DATE 플레이스홀더를 C07 (날짜→요일 변환 규칙)으로 매핑
+            # if rid == 'DATE':
+            #     rid = 'C07'
+
             rule_meta = self.ai_rules.get(rid, {}) if isinstance(self.ai_rules, dict) else {}
             canonical_rid = rule_meta.get('rule_id') or rid
 
@@ -2014,14 +2101,18 @@ TASK:
             has_correction = sentence_id in corrections
             logger.info(f"    #{i+1}: {rid} → {canonical_rid} @ {sentence_id} - Correction: {'✓' if has_correction else '✗'}")
 
+            # rule_description과 violation_type을 rule_meta에서 가져오거나 detection에서 사용
+            rule_description = rule_meta.get('description') or detection['rule_description']
+            violation_type = rule_meta.get('group') or detection['violation_type']
+
             violations.append(StyleViolation(
                 rule_id=canonical_rid,
                 component=detection['component'],
-                rule_description=detection['rule_description'],
+                rule_description=rule_description,
                 sentence_id=sentence_id,
                 original_sentence=original_sentence,
                 corrected_sentence=corrected_sentence,
-                violation_type=detection['violation_type']
+                violation_type=violation_type
             ))
 
         logger.info(f"  [중간산출물 5] 최종 Violations: {len(violations)}개")
@@ -2387,49 +2478,27 @@ OUTPUT: sentence_id and corrected_sentence for each."""
     ) -> str:
         """Correction용 입력 생성 - 규칙 상세 정보와 예제 포함"""
 
-        # 문장별로 감지된 위반들을 그룹화
+        # 문장별로 감지된 위반들을 그룹화 (중복 rule_id 제거)
         violations_by_sentence = {}
         for d in detections:
             sid = d['sentence_id']
             if sid not in violations_by_sentence:
                 violations_by_sentence[sid] = []
-            violations_by_sentence[sid].append(d['rule_id'])
+            # 같은 문장에 같은 rule_id가 중복으로 추가되지 않도록 체크
+            if d['rule_id'] not in violations_by_sentence[sid]:
+                violations_by_sentence[sid].append(d['rule_id'])
 
         extra = getattr(self, '_extra_instructions', None)
         date_context = ""
-        # 캡션/본문 교정 입력에도 로컬 기준일 + 기사 기준일(요일 포함) 컨텍스트 블록 주입
-        try:
-            sids = list(sentences_to_correct.keys())
-            is_caption = any(str(sid).startswith('C') for sid in sids)
-        except Exception:
-            is_caption = False
-        if is_caption or any(str(sid).startswith('B') for sid in sids):
-            try:
-                sents = [sentences_to_correct[sid] for sid in sids]
-                local_ref = self._infer_local_reference_date(sents, article_date)
-                ctx_block = None
-                if article_date:
-                    try:
-                        ctx_block = self._format_kst_date_context(article_date)
-                    except Exception:
-                        ctx_block = f"Article Date (KST): {article_date}"
-                if local_ref and ctx_block:
-                    date_context = f"Local Reference Day (KST): {local_ref}\n{ctx_block}\n\n"
-                elif local_ref:
-                    date_context = f"Local Reference Day (KST): {local_ref}\n\n"
-                elif ctx_block:
-                    date_context = f"{ctx_block}\n\n"
-            except Exception:
-                if article_date:
-                    try:
-                        date_context = self._format_kst_date_context(article_date) + "\n\n"
-                    except Exception:
-                        date_context = f"Article Date (KST): {article_date}\n\n"
-        else:
-            if article_date:
-                ctx = self._format_kst_date_context(article_date)
-                if ctx:
-                    date_context = ctx + "\n\n"
+        # 교정 단계에서는 Article Date 기반 Date context 블록을 항상 제공
+        # (FINAL STEP - DATE PROCESSING에서 이 리스트를 절대 기준으로 사용)
+        # if article_date:
+        #     try:
+        #         ctx = self._format_kst_date_context(article_date)
+        #     except Exception:
+        #         ctx = f"Article Date: {article_date}"
+        #     if ctx:
+        #         date_context = ctx + "\n\n"
 
         # BODY 문장인지 확인 (B로 시작하는 문장이 있는지)
         is_body = any(str(sid).startswith('B') for sid in sentences_to_correct.keys())
@@ -2490,6 +2559,9 @@ OUTPUT: sentence_id and corrected_sentence for each."""
 
             # 각 규칙의 상세 정보와 예제 추가
             for rule_id in rule_ids:
+                # if rule_id == 'DATE':
+                #     # DATE는 날짜 패턴 강제 포함용 플레이스홀더 - FINAL STEP에서 처리됨
+                #     content += f"    - **DATE**: Apply date-to-weekday conversion per FINAL STEP rules below.\n"
                 if rule_id in self.ai_rules:
                     rule_data = self.ai_rules[rule_id]
                     content += f"    - **{rule_id}**: {rule_data['description']}\n"
@@ -2505,43 +2577,63 @@ OUTPUT: sentence_id and corrected_sentence for each."""
 
             content += "\n"
 
-        # TASK 블록 (간소화 - JSON 규칙에 의존)
-        task_lines = [
-            # "**TASK:** Fix all violations listed above. Keep original content, apply only the correction patterns from examples. ",
-            "**TASK**"
-            "1. For each sentence, apply ALL the violation fixes according to the rule descriptions.",
-            "2. Return the FULLY CORRECTED sentence with all violations fixed.",
-            "3. **Constraint:** Apply the style pattern from the '✓ Correct' examples, but **keep the specific words and details of the input sentence.** Do not copy the example text.",
-        ]
+        # 캡션 날짜 처리 규칙 추가 (모든 위반 교정 후 마지막 단계로 적용)
+        # - Detection 단계에서 제공한 'Article Date'와 'Date context (within 7 days)' 리스트를
+        #   최종 권위로 사용하도록 안내한다.
+        is_caption_or_body = any(str(sid).startswith('C') for sid in sentences_to_correct.keys())
+        date_processing_block = ""
+#         if is_caption_or_body:
+#             date_processing_block = """
+# ---
+# **FINAL STEP - DATE PROCESSING (Visual String Match):**
+
+# Apply this method to ANY date found in the text.
+# **DO NOT CALCULATE. DO NOT NORMALIZE. JUST MATCH STRINGS.**
+
+# **ALGORITHM:**
+
+# 1.  **SCAN**
+#     - Look at the date in the sentence (e.g., "Dec. 3", "December 7").
+
+# 2.  **VISUAL MATCH (Strict)**
+#     - Look at the **[STRICT REPLACEMENT TABLE]** above.
+#     - Does the date appear inside the brackets `[...]` in any "Matches:" line?
+#     - Example: If text is "Dec. 3", find the line `Matches: ... | [Dec. 3] | ...`
+
+# 3.  **BLIND REPLACE**
+#     - **IF FOUND:** Replace the date with the text in `Use: "..."`.
+#       - **CRITICAL:** Use the value EXACTLY as written.
+#       - If the table says "Sunday", write "Sunday". (Do NOT add 'last').
+#       - If the table says "last Sunday", write "last Sunday". (Do NOT remove 'last').
+#       - **IGNORE CONTEXT:** Even if the sentence says "will be" (future) or "was" (past), **TRUST THE TABLE.** The table is pre-calculated and always correct.
+
+#     - **IF NOT FOUND:**
+#       - Keep the date as-is (e.g., "March 1").
+#       - Do NOT guess weekdays.
+
+# 4.  **CLEANUP**
+#     - Remove 'on' before the new weekday.
+#     - Ensure a comma exists if it follows a location.
+# """
+
+#         # TASK 블록 구성
+        task_block = """
+**TASK:**
+1. Return the FULLY CORRECTED sentence.
+"""
+# 1. **First Pass:** Apply style violation fixes (C11, C22, etc.) to the sentence.
+# 2. **Second Pass (Date Algorithm):** Run the **FINAL STEP algorithm** on any dates found.
+#    - **CRITICAL:** If a date key is in the table, **replace it BLINDLY** with the 'Use' value. **Ignore any conflicts with verb tense (e.g., 'was' + future date) or grammar.** The table is the absolute truth.
+#    - If the date (e.g., March 1) is **NOT** in the list, you MUST output the date as-is (e.g., "March 1"). Do NOT guess weekdays.
+# 4. **Constraint:** Apply the style pattern from the '✓ Correct' examples, but **keep the specific words and details of the input sentence.** Do not copy the example text.
+        
+        # 사용자 추가 지침이 있는 경우 TASK에 추가
         if extra:
-            task_lines.append(f"ADDITIONAL: {extra}")
+            task_block += f"2. ADDITIONAL: {extra}\n"
 
-        content += "\n".join(task_lines) + "\n"
-
-        # --- 기존 TASK 블록 (주석 처리) ---
-        # # TASK 블록 구성 (예시 준수 강조 및 추가 지시사항 포함)
-        # # 캡션 여부 판단
-        # try:
-        #     sids = list(sentences_to_correct.keys())
-        #     is_caption = any(str(s).startswith('C') for s in sids)
-        # except Exception:
-        #     is_caption = False
-        #
-        # task_lines = [
-        #     "**TASK:**",
-        #     "1. For each sentence, apply ALL the violation fixes according to the rule descriptions.",
-        #     "2. Return the FULLY CORRECTED sentence with all violations fixed.",
-        #     "3. **Constraint:** Apply the style pattern from the '✓ Correct' examples, but **keep the specific words and details of the input sentence.** Do not copy the example text.",
-        # ]
-        # if is_caption:
-        #     task_lines.append("4. CAPTION-SPECIFIC: Do not introduce a subject or verb; noun-phrase captions are acceptable. Preserve the original structure (phrase vs full sentence).")
-        #     task_lines.append("5. CAPTION-SPECIFIC: Ensure exactly one 'Courtesy of [Company]' credit at the end. If it already exists, do not add or duplicate it.")
-        #     task_lines.append("6. CAPTION-SPECIFIC: Do NOT add any weekday or date unless it appears in the original text; ") # only normalize existing date references per C12.
-        # if extra:
-        #     step_no = len(task_lines) + 1
-        #     task_lines.append(f"{step_no}. Additionally, follow this instruction strictly: {extra}")
-        #
-        # content += "\n".join(task_lines) + "\n"
+        # 최종 컨텐츠 조립
+        # (문장 목록 + 날짜 알고리즘 + TASK)
+        content += date_processing_block + "\n" + task_block + "\n"
 
         return content
 

@@ -269,38 +269,15 @@
         }
       ]
     },
-    "C07": {
-      "rule_id": "C07",
-      "component": "caption",
-      "group": "Date Processing",
-      "description": "**Strict Context Lookup:** Convert absolute dates to weekdays ONLY if the date key exists in the provided 'Date context' list.\n\n**STEP 1: NORMALIZE TO KEY (MM-DD)**\n- Convert the caption date to 'MM-DD' format (e.g., 'Nov. 29' → '11-29', 'Dec. 1' → '12-01').\n\n**STEP 2: EXACT KEY LOOKUP**\n- Search for this 'MM-DD' key in the list.\n- **NOT FOUND:** Do NOT convert. Keep original text.\n- **FOUND:** Proceed to STEP 3.\n\n**STEP 3: COMPARE WITH ARTICLE DATE (Critical)**\n- Compare the Date's 'MM-DD' with the Article Date's 'MM-DD' (11-26).\n- **CASE A (Future/Same):** If Date >= 11-26 (e.g., 11-29, 12-01)\n  → Output **'<Weekday>' ONLY**. (NEVER use 'last').\n- **CASE B (Past):** If Date < 11-26 (e.g., 11-23, 11-24)\n  → Output **'last <Weekday>'**.\n\n**STEP 4: FORMATTING**\n- Remove 'on'.\n- Move the date phrase after the location.",
-      "examples": [
-        {
-          "incorrect": "Participants arrive at BEXCO in Busan on Dec. 1.",
-          "correct": "Participants arrive at BEXCO in Busan Monday.",
-          "comment": "[Future Test] 12-01 > 11-26. Future date. Use 'Monday' (NO 'last')."
-        },
-        {
-          "incorrect": "Demonstrators march through downtown Seoul on Nov. 29.",
-          "correct": "Demonstrators march through downtown Seoul Saturday.",
-          "comment": "[Future Test] 11-29 > 11-26. Future date. Use 'Saturday' (NO 'last')."
-        },
-        {
-          "incorrect": "Students attend a graduation ceremony at City Hall on Nov. 23.",
-          "correct": "Students attend a graduation ceremony at City Hall last Sunday.",
-          "comment": "[Past Test] 11-23 < 11-26. Past date. Use 'last Sunday'."
-        }
-      ]
-    },
     "C08": {
       "rule_id": "C08",
       "component": "caption",
       "group": "Person Description",
-      "description": "**Country Specification for Leaders:**\n1. **South Korean President:** NEVER use 'South Korean' or 'Korea'. Start directly with 'President [Name]'.\n2. **Foreign Leaders:** MUST specify the country name before the title (e.g., 'U.S. President', 'Japanese Prime Minister').\n**Strict Enforcement:** This applies even to well-known leaders (like Trump, Biden, Xi) and regardless of whether the name appears at the start or middle of the sentence.",
+      "description": "**Photo Position for Leaders:**\n1. **Korean President:** Do NOT include their position in the photo (e.g., 'center', 'left'). It is assumed that the audience will recognize them.\n2. **Foreign Leaders:** ALWAYS indicate the position (e.g., 'left', 'right', 'center') of foreign leaders, even if they are widely known figures such as Joe Biden or Xi Jinping.",
       "examples": [
         {
-          "incorrect": "South Korean President Yoon Suk-yeol greets President Joe Biden at a summit in Seoul.",
-          "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden at a summit in Seoul."
+          "incorrect": "President Yoon Suk-yeol, center, greets U.S. President Joe Biden, right, during the bilateral talks in Seoul.",
+          "correct": "President Yoon Suk-yeol greets U.S. President Joe Biden, right, during the bilateral talks in Seoul."
         }
       ]
     },
@@ -308,12 +285,17 @@
       "rule_id": "C11",
       "component": "caption",
       "group": "Date Formatting",
-      "description": "Format absolute dates based on specificity without converting them.\n1. Use '**in**' before a date containing ONLY Month and Year (e.g., '... in Seoul **in** May 2023').\n2. Use a **comma** before a specific date containing a Day (e.g., '... in Seoul**,** May 17').\n3. Remove 'on' if present.",
+      "description": "  **Date Formatting (Absolute Dates):** 1. **Numeric Dates (MM/DD):** Treat formats like '12/03' or '12-03' as **Month/Day** (US Format). Convert to AP style. - **Abbreviate with period:** Jan., Feb., Aug., Sept., Oct., Nov., Dec. \n - **Full name NO period:** March, April, May, June, July. \n 2. **Month + Year only:** Use 'in' (e.g., '... in Seoul **in** Dec. 2023'). \n3. **Month + Day:** Use a comma **only if** the date follows a location. \n 4. **Remove 'on'** before the date.",
       "examples": [
         {
-          "incorrect": "Construction began in Seoul, May 2023.",
-          "correct": "Construction began in Seoul in May 2023.",
-          "comment": "Date has Month+Year only (no specific day), so use 'in' instead of a comma."
+          "incorrect": "Construction began in Seoul, Dec. 2023.",
+          "correct": "Construction began in Seoul in Dec. 2023.",
+          "comment": "Month+Year only → use 'in'"
+        },
+        {
+          "incorrect": "The event was held in Seoul on Nov. 4.",
+          "correct": "The event was held in Seoul, Nov. 4.",
+          "comment": "Month+Day → comma, remove 'on'"
         }
       ]
     },
@@ -838,18 +820,6 @@
         {
           "incorrect": "Tourists often visit Mt. Halla, a prominent feature of Jeju Island.",
           "correct": "Tourists often visit Mount Halla, a prominent feature of Jeju Island."
-        }
-      ]
-    },
-    "A28": {
-      "rule_id": "A28",
-      "component": "body",
-      "group": "Number Notation",
-      "description": "Numbers 0–9 are spelled out. Even when paired with a larger number in statistical or ratio constructions (e.g., ‘x out of y’, ‘x in y’, ‘x-to-y’), keep numbers under 10 spelled out unless they appear immediately before a unit (percent, million/billion, degrees, age, time, dimensions, measurements). Use numerals for 10 and above.",
-      "examples": [
-        {
-          "incorrect": "There are 5 apples.",
-          "correct": "There are five apples."
         }
       ]
     },

@@ -15,7 +15,7 @@ Rule-Based Pre-Corrector for Korea Times Articles
 """
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -49,6 +49,32 @@ class RuleBasedCorrector:
             'eighty': '80', 'ninety': '90', 'hundred': '100', 'thousand': '1,000',
             'million': '1 million', 'billion': '1 billion', 'trillion': '1 trillion'
         }
+        # 숫자 단어 → 값 변환용 보조 맵
+        self._number_word_value = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14,
+            'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19,
+            'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50,
+            'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90,
+        }
+        self._number_scales = {'hundred': 100, 'thousand': 1000, 'million': 1_000_000, 'billion': 1_000_000_000}
+        self._digit_to_word = {str(i): w for i, w in enumerate(
+            ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
+        )}
+        # A28 단위 목록 (숫자 강제)
+        self._a28_units = [
+            # 통화/규모
+            r'percent(?:age)?', r'won', r'dollar(?:s)?', r'euro(?:s)?',
+            r'million', r'billion', r'trillion',
+            # 거리/길이
+            r'meter(?:s)?', r'kilometer(?:s)?', r'centimeter(?:s)?', r'millimeter(?:s)?',
+            r'mile(?:s)?', r'inch(?:es)?', r'foot', r'feet',
+            # 온도/각도
+            r'degree(?:s)?',
+            # 시간
+            r'second(?:s)?', r'minute(?:s)?', r'hour(?:s)?', r'day(?:s)?', r'week(?:s)?', r'month(?:s)?', r'year(?:s)?(?:\s+old)?',
+        ]
 
         # 복합어 분리 대상 (A34)
         self.compound_words_to_split = {
@@ -450,6 +476,10 @@ class RuleBasedCorrector:
         corrected, corr = self._apply_a14_percent_symbol(corrected, 'body')
         corrections.extend(corr)
 
+        # A28 - Number formatting (units vs plain numbers)
+        corrected, corr = self._apply_a28_number_format(corrected, 'body')
+        corrections.extend(corr)
+
         # A31 - Joseon Kingdom → Joseon
         corrected, corr = self._apply_a31_kingdom(corrected, 'body')
         corrections.extend(corr)
@@ -581,8 +611,6 @@ class RuleBasedCorrector:
         corrected, corr = self._apply_c27_seoul_districts(corrected, 'caption')
         corrections.extend(corr)
 
-        # C28 - Palace names: 캡션에서는 정규식 적용을 중단하고 AI(C 규칙)로 처리
-
         # C29 - Mount [Name] format (Tier 1A)
         corrected, corr = self._apply_c29_mount_format(corrected, 'caption')
         corrections.extend(corr)
@@ -605,6 +633,10 @@ class RuleBasedCorrector:
 
         # C13 - Date range formatting
         corrected, corr = self._apply_c13_date_ranges(corrected, 'caption')
+        corrections.extend(corr)
+
+        # C07
+        corrected, corr = self._apply_c07_date_processing(corrected, 'caption', article_datetime)
         corrections.extend(corr)
 
         # C12 - Date format adjustment (AI 처리로 이관)
@@ -726,6 +758,137 @@ class RuleBasedCorrector:
 
         corrected = re.sub(pattern, 'Joseon Dynasty', text)
         return corrected, corrections
+
+    def _apply_a28_number_format(self, text: str, component: str) -> Tuple[str, List[Correction]]:
+        """
+        A28 - Number formatting (rule-based assist)
+
+        - 숫자 단어(one~nineteen, tens) + 단위 → 아라비아 숫자로 변환 (예: four hours → 4 hours)
+        - scale 단어(hundred/thousand/million/billion) 포함 시, 숫자로 변환하되 million/billion은 그대로 유지 (예: five million won → 5 million won)
+        - 단위가 없는 1~9 숫자는 철자로 변환 (예: 4 options → four options)
+        """
+        import re
+
+        corrections: List[Correction] = []
+
+        # 단위 패턴 (길이가 긴 순으로 매칭되도록 정렬)
+        unit_pattern = "|".join(sorted(self._a28_units, key=len, reverse=True))
+
+        # 숫자 단어 구문 패턴 (최대: tens + ones + scale 1개)
+        num_word = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+        num_phrase_pattern = rf"(?:{num_word}(?:\s+{num_word})?)(?:\s+(?:hundred|thousand|million|billion))?"
+
+        # 1) 숫자 단어 + 단위 → 숫자 + 단위
+        pattern_units = re.compile(rf"\b({num_phrase_pattern})\s+({unit_pattern})\b", re.IGNORECASE)
+
+        def _number_phrase_to_string(phrase: str) -> Optional[str]:
+            # 간단한 영어 숫자 구문을 숫자 문자열로 변환
+            try:
+                tokens = phrase.lower().split()
+                total = 0
+                current = 0
+                scale_token = None
+                for t in tokens:
+                    if t in self._number_scales:
+                        scale_token = t
+                        # scale 이전 숫자 계산
+                        if current == 0:
+                            current = 1
+                        current = current * self._number_scales[t]
+                        total += current
+                        current = 0
+                    else:
+                        current += self._number_word_value.get(t, 0)
+                total += current
+
+                # million/billion은 원문의 단위 표현을 유지 (5 million → "5 million")
+                if scale_token in ('million', 'billion'):
+                    # total은 실제 값이지만, 표현은 "<base> million" 형태가 더 자연스러움
+                    # tokens에서 scale 앞의 숫자만 추출
+                    base_tokens = []
+                    for t in tokens:
+                        if t == scale_token:
+                            break
+                        base_tokens.append(t)
+                    # base 숫자 계산
+                    base_total = 0
+                    tmp = 0
+                    for t in base_tokens:
+                        tmp += self._number_word_value.get(t, 0)
+                    base_total += tmp
+                    return f"{base_total} {scale_token}"
+
+                return str(total)
+            except Exception:
+                return None
+
+        def repl_units(m: re.Match) -> str:
+            original = m.group(0)
+            num_phrase = m.group(1)
+            unit = m.group(2)
+            num_str = _number_phrase_to_string(num_phrase)
+            if not num_str:
+                return original
+            corrected = f"{num_str} {unit}"
+            corrections.append(Correction(
+                rule_id='A28',
+                component=component,
+                original=original,
+                corrected=corrected,
+                position=m.start()
+            ))
+            return corrected
+
+        text = pattern_units.sub(repl_units, text)
+
+        # 2) 단위 없는 1~9 숫자 → 철자
+        #    (뒤에 단위 패턴이 오지 않는 경우만)
+        pattern_plain_digit = re.compile(rf"\b([1-9])\b(?!\s+(?:{unit_pattern})\b)")
+
+        def repl_plain(m: re.Match) -> str:
+            original = m.group(0)
+            digit = m.group(1)
+            word = self._digit_to_word.get(digit)
+            if not word:
+                return original
+            corrections.append(Correction(
+                rule_id='A28',
+                component=component,
+                original=original,
+                corrected=word,
+                position=m.start()
+            ))
+            return word
+
+        text = pattern_plain_digit.sub(repl_plain, text)
+
+        # 3) scale(hundred/thousand/million/billion) 포함 숫자 단어 구문(단위 없음) → 숫자
+        #    예: "nine hundred workers" → "900 workers"
+        pattern_scale_no_unit = re.compile(rf"\b({num_phrase_pattern})\b(?!\s+(?:{unit_pattern})\b)", re.IGNORECASE)
+
+        def repl_scale_no_unit(m: re.Match) -> str:
+            original = m.group(0)
+            phrase = m.group(1)
+            # scale 단어가 없는 경우는 유지 (ten, twenty 등은 그대로 두기 위함)
+            if not any(s in phrase.lower().split() for s in self._number_scales):
+                return original
+            num_str = _number_phrase_to_string(phrase)
+            if not num_str:
+                return original
+            # million/billion 등 scale이 포함되어도 unit이 없으면 그대로 사용 (예: 5 million)
+            corrected = num_str
+            corrections.append(Correction(
+                rule_id='A28',
+                component=component,
+                original=original,
+                corrected=corrected,
+                position=m.start()
+            ))
+            return corrected
+
+        text = pattern_scale_no_unit.sub(repl_scale_no_unit, text)
+
+        return text, corrections
 
     def _apply_c32_joseon_dynasty(self, text: str, component: str) -> Tuple[str, List[Correction]]:
         """C32 - Joseon Kingdom → Joseon Dynasty (Caption - Tier 1A)
@@ -1282,6 +1445,138 @@ class RuleBasedCorrector:
 
                 corrected = corrected[:match.start()] + en_name + corrected[match.end():]
                 break  # Apply once per occurrence
+
+        return corrected, corrections
+
+    def _apply_c07_date_processing(self, text: str, component: str,
+                                   article_datetime: datetime) -> Tuple[str, List[Correction]]:
+        """C07 - Date Processing (Within 7 days conversion)
+        
+        Logic:
+        1. Detect dates (Nov. 24, 11/24, etc.)
+        2. Compare with article_datetime
+        3. If within -7 days (past): Convert to "last [Weekday]"
+        4. If within +7 days (future/same): Convert to "[Weekday]"
+        5. Remove 'on' preposition
+        """
+        corrections = []
+        corrected = text
+        
+        # Month mapping
+        month_map = {
+            'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+            'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+            'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9,
+            'oct': 10, 'october': 10, 'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+        }
+
+        # Regex Pattern Components
+        # 1. Preamble: Optional 'on' (capture group 1)
+        # 2. Month: Text (Jan, January...) OR Number (1-12)
+        # 3. Separator: Space, dot, slash, hyphen
+        # 4. Day: 1-31
+        # 5. Optional Year: , 2024 or /2024
+        
+        # Pattern 1: Text Month (Nov. 24, November 24)
+        month_names = "January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\."
+        pat_text = rf'(?P<prep>on\s+)?\b(?P<month>{month_names})\s+(?P<day>\d{{1,2}})(?:,?\s*(?P<year>\d{{4}}))?\b'
+        
+        # Pattern 2: Numeric Month (11/24, 11-24)
+        pat_num = r'(?P<prep>on\s+)?\b(?P<month>\d{1,2})[/-](?P<day>\d{1,2})(?:[/-](?P<year>\d{4}))?\b'
+
+        # Helper to process matches
+        def get_closest_date(target_month, target_day, explicit_year=None):
+            """기사 날짜와 가장 가까운 연도의 날짜를 반환 (연도 경계 문제 해결)"""
+            if explicit_year:
+                return datetime(int(explicit_year), target_month, target_day)
+            
+            # 연도가 없으면: 기사 연도, 작년, 내년 중 가장 가까운 날짜 선택
+            candidates = []
+            for y in [article_datetime.year - 1, article_datetime.year, article_datetime.year + 1]:
+                try:
+                    candidates.append(datetime(y, target_month, target_day))
+                except ValueError:
+                    continue # 2월 29일 등의 오류 방지
+            
+            # 기사 날짜와의 차이가 가장 적은 후보 선택
+            return min(candidates, key=lambda d: abs((d - article_datetime).days))
+
+        def process_match(match, is_numeric=False):
+            nonlocal corrected
+            
+            prep = match.group('prep') or "" # "on " or None
+            month_raw = match.group('month')
+            day_raw = int(match.group('day'))
+            year_raw = match.group('year')
+
+            # Parse Month
+            if is_numeric:
+                month_idx = int(month_raw)
+            else:
+                month_clean = month_raw.lower().rstrip('.')
+                month_idx = month_map.get(month_clean)
+            
+            if not month_idx or not (1 <= month_idx <= 12) or not (1 <= day_raw <= 31):
+                return
+
+            # Calculate Event Date
+            try:
+                event_date = get_closest_date(month_idx, day_raw, year_raw)
+            except Exception:
+                return
+
+            # Calculate Difference
+            diff_days = (event_date.date() - article_datetime.date()).days
+            
+            target_str = ""
+            weekday = event_date.strftime("%A") # e.g., Monday
+
+            # Logic: Within 7 days range (-6 to +6)
+            # User Rule: 
+            # Past (< 0): "last [Weekday]"
+            # Future/Same (>= 0): "[Weekday]"
+            
+            # 범위를 7일로 설정 (필요시 조정 가능)
+            if -7 < diff_days < 0:
+                target_str = f"last {weekday}"
+            elif 0 <= diff_days < 7:
+                target_str = weekday
+            else:
+                return
+
+            original_text = match.group(0)
+            
+            return (match.start(), match.end(), original_text, target_str)
+
+
+        # Collect all replacements first
+        replacements = []
+
+        # Find Text Matches
+        for m in re.finditer(pat_text, corrected, re.IGNORECASE):
+            res = process_match(m, is_numeric=False)
+            if res: replacements.append(res)
+            
+        # Find Numeric Matches
+        for m in re.finditer(pat_num, corrected, re.IGNORECASE):
+            res = process_match(m, is_numeric=True)
+            if res: replacements.append(res)
+
+        # Sort replacements by start position descending (to avoid index shift)
+        replacements.sort(key=lambda x: x[0], reverse=True)
+        
+        # Apply Replacements
+        for start, end, original, replacement in replacements:
+            
+            corrections.append(Correction(
+                rule_id='C07',
+                component=component,
+                original=original,
+                corrected=replacement,
+                position=start
+            ))
+            
+            corrected = corrected[:start] + replacement + corrected[end:]
 
         return corrected, corrections
 
