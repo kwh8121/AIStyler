@@ -31,7 +31,7 @@ Core rules:
 - Headline case: Use sentence case. No period at the end.
 - Use present tense, strong verbs, and AP numerals (figures for 10+, percentages, ages, dates).
 - Avoid starting with a date. Use AP date forms if a date must appear.
-- Keep it concise (~6–12 words or under ~65 characters when possible).
+- Keep it concise (~10–20 words or under ~100 characters when possible).
 - Use commonly accepted English names for people/places; otherwise, use standard romanization.
 
 Output format:
