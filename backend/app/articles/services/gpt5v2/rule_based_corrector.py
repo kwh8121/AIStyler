@@ -603,6 +603,7 @@ class RuleBasedCorrector:
         corrected, corr = self._apply_c18_captured_from(corrected, 'caption')
         corrections.extend(corr)
 
+
         # C24 - 크레딧 마침표 (Yonhap)
         corrected, corr = self._apply_c24_credit_period(corrected, 'caption')
         corrections.extend(corr)
@@ -631,16 +632,14 @@ class RuleBasedCorrector:
         corrected, corr = self._apply_korean_temples(corrected, 'caption')
         corrections.extend(corr)
 
-        # C13 - Date range formatting
-        corrected, corr = self._apply_c13_date_ranges(corrected, 'caption')
-        corrections.extend(corr)
+        # C12 - Date format adjustment (Move to top of date rules to preserve context)
+        if article_datetime:
+            corrected, corr = self._apply_c12_date_format(corrected, 'caption', article_datetime)
+            corrections.extend(corr)
 
-        # C07
-        corrected, corr = self._apply_c07_date_processing(corrected, 'caption', article_datetime)
+        # C11 - Absolute date formatting (including 'on' removal and A23 year omission)
+        corrected, corr = self._apply_c11_absolute_date_format(corrected, 'caption', article_datetime)
         corrections.extend(corr)
-
-        # C12 - Date format adjustment (AI 처리로 이관)
-        # 캡션 날짜 스타일(C12)은 AI 단계에서 처리합니다.
 
         return corrected, corrections
 
@@ -699,13 +698,21 @@ class RuleBasedCorrector:
     def _apply_h11_number_won(self, text: str, component: str) -> Tuple[str, List[Correction]]:
         """H11 - 숫자+won → W (동사 won 제외)"""
         corrections = []
-        # 숫자 바로 뒤의 won만 매칭
-        pattern = r'\b(\d[\d,]*(?:\.\d+)?)\s*won\b'
+        # 숫자와 'won' 사이에 scale 단어(million, billion, trillion)가 올 수 있도록 정규식 확장
+        pattern = r'\b(\d[\d,]*(?:\.\d+)?)\s*(trillion|billion|million)?\s*won\b'
 
         def replace_fn(match):
             original = match.group(0)
             number = match.group(1)
-            corrected = f"W{number}"
+            scale = match.group(2)
+            
+            if scale:
+                # scale 단어가 있는 경우: W4.6 trillion
+                corrected = f"W{number} {scale}"
+            else:
+                # scale 단어가 없는 경우: W50,000
+                corrected = f"W{number}"
+                
             corrections.append(Correction(
                 rule_id='H11',
                 component=component,
@@ -1026,6 +1033,7 @@ class RuleBasedCorrector:
 
         return corrected, corrections
 
+
     def _apply_c24_credit_period(self, text: str, component: str) -> Tuple[str, List[Correction]]:
         """C24 - 크레딧 마침표 (Yonhap, Courtesy of, Korea Times 등)"""
         corrections = []
@@ -1285,7 +1293,8 @@ class RuleBasedCorrector:
         corrections = []
 
         # Pattern: "Korea Times photo" → "Korea Times file"
-        pattern = r'\bKorea\s+Times\s+photo\b'
+        # Guard: Do not change if followed by "by [Name]" (C15 exception)
+        pattern = r'\bKorea\s+Times\s+photo\b(?!\s+by)'
 
         for match in re.finditer(pattern, text, re.IGNORECASE):
             original = match.group(0)
@@ -1465,7 +1474,7 @@ class RuleBasedCorrector:
         # 5. Optional Year: , 2024 or /2024
         
         # Pattern 1: Text Month (Nov. 24, November 24)
-        month_names = "January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\."
+        month_names = r"January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\."
         pat_text = rf'(?P<prep>on\s+)?\b(?P<month>{month_names})\s+(?P<day>\d{{1,2}})(?:,?\s*(?P<year>\d{{4}}))?\b'
         
         # Pattern 2: Numeric Month (11/24/2024, 11-24-2024)
@@ -1508,7 +1517,8 @@ class RuleBasedCorrector:
 
             # 0-1) 날짜 범위의 앞쪽 날짜 보호: "Nov. 24 to 30", "Nov. 24-30", "Nov. 24 through 30"
             after = corrected[end:end + 16]
-            if re.match(r'\s*(to|-|through)\b', after, flags=re.IGNORECASE):
+            # \b는 단어 경계이므로 - 뒤에 공백이 있을 경우를 위해 패턴 수정
+            if re.match(r'\s*(to|through|\s*-\s*)\b', after, flags=re.IGNORECASE):
                 return
 
             # Parse Month
@@ -1540,9 +1550,9 @@ class RuleBasedCorrector:
             
             # 범위를 7일 미만(-6 ~ +6)으로 설정 (정확히 7일 전/후는 제외)
             if -7 < diff_days < 0:
-                target_str = f"last {weekday}"
+                target_str = f"{prep}last {weekday}"
             elif 0 <= diff_days < 7:
-                target_str = weekday
+                target_str = f"{prep}{weekday}"
             else:
                 return
 
@@ -1770,6 +1780,70 @@ class RuleBasedCorrector:
 
         return corrected, corrections
 
+    def _apply_c11_absolute_date_format(self, text: str, component: str,
+                                       article_datetime: datetime = None) -> Tuple[str, List[Correction]]:
+        """C11 - Absolute Date Formatting (Tier 1A)
+        
+        Logic:
+        1. Remove 'on' before dates.
+        2. Standardize Month Day, Year format.
+        3. Caption Principle: Always omit Year if Day is present.
+        """
+        corrections = []
+        corrected = text
+        
+        month_names = r"January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\."
+        # Pattern: Optional 'on' + Month + Optional dot + Day + optional gear/comma + optional Year
+        pattern = rf'(?i)(?P<on>on\s+)?\b(?P<month>{month_names})(?P<extdot>\.)?\s+(?P<day>\d{{1,2}})(?:[.,]?\s*(?P<year>\d{{4}}))?\b'
+        
+        ap_abbr = {
+            'january': 'Jan.', 'jan.': 'Jan.',
+            'february': 'Feb.', 'feb.': 'Feb.',
+            'march': 'March', 'mar.': 'March',
+            'april': 'April', 'apr.': 'April',
+            'may': 'May',
+            'june': 'June', 'jun.': 'June',
+            'july': 'July', 'jul.': 'July',
+            'august': 'Aug.', 'aug.': 'Aug.',
+            'september': 'Sept.', 'sep.': 'Sept.', 'sept.': 'Sept.',
+            'october': 'Oct.', 'oct.': 'Oct.',
+            'november': 'Nov.', 'nov.': 'Nov.',
+            'december': 'Dec.', 'dec.': 'Dec.'
+        }
+
+        # Use finditer and apply in reverse to keep positions valid
+        matches = list(re.finditer(pattern, corrected))
+        for match in reversed(matches):
+            on_part = match.group('on')
+            month_raw = match.group('month')
+            day = match.group('day')
+            year = match.group('year')
+
+            # 1. Normalize Month
+            clean_m = month_raw.lower().rstrip('.')
+            month_norm = ap_abbr.get(clean_m, month_raw)
+
+            # 2. Year Omission (Caption Principle: Always omit if Day is present)
+            year_part = ""
+            
+            corrected_text = f"{month_norm} {day}{year_part}"
+            
+            original = match.group(0)
+            if original == corrected_text:
+                continue
+
+            corrections.append(Correction(
+                rule_id='C11',
+                component=component,
+                original=original,
+                corrected=corrected_text,
+                position=match.start()
+            ))
+            
+            corrected = corrected[:match.start()] + corrected_text + corrected[match.end():]
+
+        return corrected, corrections
+
     def _apply_c12_date_format(self, text: str, component: str,
                                article_datetime: datetime) -> Tuple[str, List[Correction]]:
         """C12 - Date format adjustment (Tier 1A with context)
@@ -1784,65 +1858,86 @@ class RuleBasedCorrector:
         corrections = []
         corrected = text
 
-        # Pattern: Weekday, Month Day, Year
-        # Match: "Thursday, April 27, 2024" or "Monday, Dec. 15, 2023"
-        pattern = r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Oct\.|Nov\.|Dec\.)\s+(\d{1,2}),?\s*(\d{4})\b'
+        # Pattern: Optional 'on' + Weekday, Month Day, Year
+        pattern = r'(?i)(?P<on>on\s+)?\b(?P<weekday>Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(?P<month>January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\.)\s+(?P<day>\d{1,2}),?\s*(?P<year>\d{4})\b'
 
-        matches = list(re.finditer(pattern, corrected, re.IGNORECASE))
+        matches = list(re.finditer(pattern, corrected))
 
-        # Process in reverse order to maintain positions
         for match in reversed(matches):
-            weekday = match.group(1)
-            month = match.group(2)
-            day = match.group(3)
-            year = match.group(4)
+            prep = match.group('on') or ""
+            weekday = match.group('weekday')
+            month = match.group('month')
+            day = match.group('day')
+            year = match.group('year')
 
-            # Parse event date
+            # Parse the date found in text
             try:
-                event_datetime = self._parse_caption_date(month, day, year)
-            except (ValueError, KeyError):
-                # Invalid date, skip
-                continue
+                # Basic cleaning of month for parsing
+                clean_month = month.rstrip('.')
+                date_str = f"{clean_month} {day} {year}"
+                
+                # Try both full name and abbreviated format
+                dt = None
+                for fmt in ("%B %d %Y", "%b %d %Y"):
+                    try:
+                        dt = datetime.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                
+                if not dt:
+                    continue
 
-            # Verify weekday matches the date
-            actual_weekday = event_datetime.strftime('%A')
-            if actual_weekday.lower() != weekday.lower():
-                # Date mismatch warning
+                # Calculate difference
+                # article_datetime is already aware of its timezone if set, 
+                # but we usually compare dates at 00:00 for "7 days" rule
+                dt_clean = datetime(dt.year, dt.month, dt.day)
+                art_clean = datetime(article_datetime.year, article_datetime.month, article_datetime.day)
+                
+                delta = art_clean - dt_clean
+                days_diff = delta.days
+
+                # Decide corrected text
+                if 0 <= days_diff < 7:
+                    # 7일 미만 차이 (0~6일): 요일만 표기 (전치사 제거하여 간결하게)
+                    corrected_text = weekday
+                else:
+                    # 7일 이상 차이 또는 미래 날짜: 월, 일 표기 (연도 제외 - 캡션 상시 생략 원칙)
+                    # AP Standardize month
+                    clean_m = month.lower().rstrip('.')
+                    ap_abbr = {
+                        'january': 'Jan.', 'february': 'Feb.', 'august': 'Aug.',
+                        'september': 'Sept.', 'october': 'Oct.', 'november': 'Nov.', 'december': 'Dec.'
+                    }
+                    month_norm = ap_abbr.get(clean_m, month) # Keep others as is (March, April, etc.)
+                    corrected_text = f"{month_norm} {day}"
+
+                original = match.group(0)
+
+                # Skip if no change (e.g., month matches and already in correct format)
+                if original == corrected_text:
+                    continue
+
                 corrections.append(Correction(
                     rule_id='C12',
                     component=component,
-                    original=match.group(0),
-                    corrected=f"[WARNING: {weekday} != {actual_weekday} for {month} {day}, {year}]",
+                    original=original,
+                    corrected=corrected_text,
                     position=match.start()
                 ))
+
+                corrected = corrected[:match.start()] + corrected_text + corrected[match.end():]
+
+            except Exception as e:
+                self.logger.warning(f"Error processing C12 date format: {e}")
                 continue
 
-            # Calculate difference in days
-            days_diff = (article_datetime - event_datetime).days
-
-            # Apply rule based on time difference
-            original = match.group(0)
-
-            if 0 <= days_diff <= 7:
-                # Within a week: use only weekday
-                corrected_text = weekday
-            elif days_diff > 7:
-                # More than a week ago: use only date
-                # Keep month format (abbreviated or full)
-                corrected_text = f"{month} {day}"
-            else:
-                # Future date (negative days_diff): skip
-                continue
-
-            corrections.append(Correction(
-                rule_id='C12',
-                component=component,
-                original=original,
-                corrected=corrected_text,
-                position=match.start()
-            ))
-
-            corrected = corrected[:match.start()] + corrected_text + corrected[match.end():]
+        # 실제 교정이 발생한 경우에만 로깅
+        if corrections:
+            _logger = logging.getLogger(__name__)
+            preview = "; ".join([f"{c.original} -> {c.corrected}" for c in corrections[:3]])
+            more = f" (+{len(corrections)-3} more)" if len(corrections) > 3 else ""
+            _logger.info(f"[rule-based] C12 applied: {len(corrections)} change(s): {preview}{more}")
 
         return corrected, corrections
 

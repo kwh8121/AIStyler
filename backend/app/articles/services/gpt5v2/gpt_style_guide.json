@@ -14,6 +14,8 @@
       "A34",
       "A35",
       "C09",
+      "C11",
+      "C12",
       "C13",
       "C15",
       "C18",
@@ -315,7 +317,7 @@
       "rule_id": "C16",
       "component": "caption",
       "group": "Source Attribution",
-      "description": "Source attribution (company provided): If a photo is directly provided by a company/organization, remove any 'in this photo provided by [Company Name]' (or similar) from the caption content and end the caption with 'Courtesy of [Company Name]'. Do NOT include any news‑agency or in‑house credit (this includes 'Korea Times file'). Never combine 'provided by ...' and 'Courtesy of ...'. If a valid 'Courtesy of [Company]' already appears at the end, do NOT add or duplicate it; only remove 'provided by ...' from the caption content. Ensure exactly one final credit phrase at the end of the caption. Decision hint: If the original caption does NOT end with a recognized news/wire agency credit (e.g., ‘Yonhap’, ‘AP’, ‘Reuters’, ‘AFP’, ‘Getty Images’, ‘EPA’, ‘Bloomberg’, ‘Korea Times’), prefer C16. Do not invent any agency credit.",
+      "description": "Source attribution (company provided): If a photo is directly provided by a company/organization, remove any 'in this photo provided by [Company Name]' (or similar) from the caption content and end the caption with 'Courtesy of [Company Name]'. **CRITICAL PROTECTION**: Do NOT modify captions that already contain personal credits (e.g., 'Korea Times photo by Lee Han-ho'). These are in‑house credits and must be preserved exactly as they are. **AUTHORIZED FORMAT**: Use ONLY 'Courtesy of [Company]'. Do NOT use 'via' or other unauthorized separators. Ensure exactly one final credit phrase at the end of the caption. Decision hint: If the original caption does NOT end with a recognized news/wire agency credit (e.g., ‘Yonhap’, ‘AP’, ‘Reuters’, ‘AFP’, ‘Getty Images’, ‘EPA’, ‘Bloomberg’, ‘Korea Times’), prefer C16.",
       "examples": [
         {
           "incorrect": "A new electric vehicle model is displayed at a recent auto show in this photo provided by Hyundai Motor. Courtesy of Hyundai Motor",
@@ -331,7 +333,7 @@
       "rule_id": "C17",
       "component": "caption",
       "group": "Source Attribution",
-      "description": "Source attribution (news agency using company photo): When a news agency uses a company‑provided photo, include 'in this photo provided by [Company Name]' in the caption content, and end with the news‑agency credit (e.g., 'Yonhap'). Do NOT add 'Courtesy of ...' and do NOT add in‑house credits (e.g., 'Korea Times file'). Never combine 'provided by ...' and 'Courtesy of ...'. Decision hint: Apply C17 only if the original caption ends with a recognized news/wire agency credit (e.g., ‘Yonhap’, ‘AP’, ‘Reuters’, ‘AFP’, ‘Getty Images’, ‘EPA’, ‘Bloomberg’, ‘Korea Times’). Do not add ‘Courtesy of …’.",
+      "description": "Source attribution (news agency using company photo): When a news agency uses a company‑provided photo, include 'in this photo provided by [Company Name]' in the caption content (mid‑sentence), and end with the news‑agency credit (e.g., 'Yonhap'). **CRITICAL PROTECTION**: Do NOT modify captions that already contain personal credits (e.g., 'Korea Times photo by Lee Han-ho'). **AUTHORIZED FORMAT**: Use ONLY 'in this photo provided by [Company]'. Do NOT use 'via' or other unauthorized separators. Do not add ‘Courtesy of …’.",
       "examples": [
         {
           "incorrect": "A new electric vehicle model is displayed at a recent auto show. Courtesy of Hyundai Motor.",
@@ -347,7 +349,7 @@
       "rule_id": "C19",
       "component": "caption",
       "group": "Sentence Structure & Credit Normalization",
-      "description": "**Credit Formatting based on Sentence Structure:**\n1. **Full Sentence (Subject + Finite Verb):** End the sentence with a period. Add the credit as a separate sentence (e.g., '... in Seoul. Courtesy of Samsung.').\n2. **Noun Phrase (No Finite Verb):** Do NOT use a period. Separate the caption and credit with ' / ' (space slash space) (e.g., '... in Seoul / Courtesy of Samsung').\n\n**CRITICAL:** Do not confuse **participles** (words ending in -ing like 'starring', 'standing', 'holding') with finite verbs. 'Actor A starring in a movie' is a **Noun Phrase** (use slash). 'Actor A stars in a movie' is a **Sentence** (use period).",
+      "description": "**Credit Formatting based on Sentence Structure:**\n1. **Full Sentence (Subject + Finite Verb):** End the sentence with a period. Add the credit as a separate sentence (e.g., '... in Seoul. Courtesy of Samsung.').\n2. **Noun Phrase (No Finite Verb):** Do NOT use a period. Separate the caption and credit with ' / ' (space slash space) (e.g., '... in Seoul / Courtesy of Samsung').\n\n**CRITICAL PROTECTION**: Do NOT apply this rule to in‑house credits like 'Korea Times photo by [Name]'. Preserve them as they are. Always prefer a period if the caption has a finite verb.",
       "examples": [
         {
           "incorrect": "President Yoon Suk Yeol speaks at a research center in Yongin, Monday / Courtesy of Samsung Electronics.",
