@@ -63,12 +63,12 @@ class Config(BaseSettings):
     GPT5_V2_ENABLED: bool = False
     GPT5_V2_DUMP_PROMPTS: bool = False
     GPT5_V2_LOG_DIR: str = "logs/gpt5v2"
-    # v2 Expert 분리 여부 (True=3-experts, False=단일 호출)
+    # v2 Expert 분리 여부 (True=3/2-experts, False=단일 호출)
     GPT5_V2_USE_EXPERT_SPLIT: bool = False
 
     # Gemini API 설정
     GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
     USE_GEMINI: bool = False  # Gemini 사용 여부 플래그
 
     # AI Server 설정

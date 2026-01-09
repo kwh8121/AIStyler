@@ -144,7 +144,8 @@ def generate_sentence_level_correction_prompt(
 
 def generate_openai_style_analysis_prompt(
     style_guides: List[StyleGuide],
-    category: str
+    category: str,
+    date_context: Optional[str] = None
 ) -> str:
     """OpenAI를 위한 스타일가이드 분석 프롬프트 생성"""
 
@@ -184,6 +185,8 @@ Category: {json_category}
 Style Guide Rules:
 {chr(10).join(rules_text)}
 
+{date_context if date_context else ""}
+
 Instructions:
 1. Check EVERY sentence against ALL style guide rules
 2. Identify ALL violations
@@ -211,7 +214,8 @@ def generate_openai_correction_prompt(
     text: str,
     violations: List[Dict],
     style_guides: List[StyleGuide],
-    additional_prompt: Optional[str] = None
+    additional_prompt: Optional[str] = None,
+    date_context: Optional[str] = None
 ) -> str:
     """OpenAI를 위한 교정 프롬프트 생성 (위반사항 기반)"""
 
@@ -258,6 +262,7 @@ def generate_openai_correction_prompt(
         "Relevant Style Guide Rules:",
         *relevant_rules,
         "",
+        date_context if date_context else "",
         "Instructions:",
         "1. Fix ONLY the violations listed above",
         "2. Do NOT change anything else in the text",

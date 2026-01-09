@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from openai import OpenAI, AsyncOpenAI
 import nltk
 from .rule_based_corrector import RuleBasedCorrector
+from .date_constants import WEEKDAY_NAMES, MONTH_FULL_NAMES, MONTH_ABBREVIATIONS
 
 # NLTK 데이터 다운로드 확인
 try:
@@ -488,6 +489,29 @@ class AIStylerGPT5Sentence:
         except Exception as exc:
             logger.debug("[v2] dump failed for %s: %s", kind, exc)
 
+    def _postprocess_year_removal(self, text: str, article_year: int) -> str:
+        """
+        LLM 출력에서 article year를 제거하는 후처리.
+        
+        패턴: "Month Day, Year" 또는 "Month. Day, Year" → "Month Day" 또는 "Month. Day"
+        예: "Nov. 30, 2026" → "Nov. 30" (article_year가 2026인 경우)
+        """
+        if not text or not article_year:
+            return text
+        
+        # 월 이름 패턴 (full 및 abbreviated)
+        month_pattern = r"(?:Jan\.?|Feb\.?|March|April|May|June|July|Aug\.?|Sept\.?|Oct\.?|Nov\.?|Dec\.?|January|February|August|September|October|November|December)"
+        
+        # 패턴: "Month Day, Year" → "Month Day"
+        # 예: "Nov. 30, 2026" → "Nov. 30"
+        pattern = rf"({month_pattern}\s+\d{{1,2}}),?\s+{article_year}\b"
+        result = re.sub(pattern, r"\1", text)
+        
+        # 패턴: ", Month Day, Year" → ", Month Day" (문장 중간의 날짜)
+        # 이미 위에서 처리됨
+        
+        return result
+
     def _format_kst_date_context(self, article_date: Optional[str]) -> str:
         """
         [Multi-Key Lookup Table]
@@ -501,82 +525,78 @@ class AIStylerGPT5Sentence:
         except Exception:
             return f"Article Date: {article_date}"
 
-        dows = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        month_full = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-        month_abbr = ["", "Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."]
+        dows = WEEKDAY_NAMES
+        month_full = MONTH_FULL_NAMES
+        month_abbr = MONTH_ABBREVIATIONS
 
         lines = []
-        lines.append(f"Article Date: {base.isoformat()} ({dows[base.weekday()][:3]})")
-        lines.append("[STRICT REPLACEMENT TABLE]")
-        lines.append("Instructions: If you find ANY of the 'Patterns' in the text, replace it EXACTLY with the 'Replacement'.")
+        lines.append(f"REFERENCE DATES INFORMATION (Article Date is {base.isoformat()})")
+        lines.append("="*40)
+        lines.append("\n[PROCESSING INSTRUCTIONS - A04 Complete Date Formatting Rule]")
+        lines.append(f"")
+        lines.append(f"**STEP 1: Year Handling (ALWAYS APPLY FIRST)**")
+        lines.append(f"  - If year is DIFFERENT from {base.year} → Keep year, REMOVE weekday, apply Step 3 for month abbreviation, END")
+        lines.append(f"  - If year is SAME as {base.year} OR no year → REMOVE year (even if month is already abbreviated like 'Nov.'), proceed to Step 2")
+        lines.append(f"")
+        lines.append(f"**STEP 2: Weekday Conversion (TABLE LOOKUP ONLY)**")
+        lines.append(f"  - Check if 'Month Day' appears in the Reference Table below")
+        lines.append(f"  - If date IS in the table → Replace ENTIRE date with the weekday shown in table, END")
+        lines.append(f"  - If date is NOT in the table → Do NOT convert to weekday. Remove any weekday, keep 'Month Day' format, proceed to Step 3")
+        lines.append(f"  - **WARNING**: NEVER calculate weekdays yourself. ONLY use the table.")
+        lines.append(f"")
+        lines.append(f"**STEP 3: Month Abbreviation**")
+        lines.append(f"  - Month + Day → MUST abbreviate: Jan., Feb., Aug., Sept., Oct., Nov., Dec. / NEVER abbreviate: March, April, May, June, July")
+        lines.append(f"  - Month + Year only (no day) → Spell out ALL months fully")
+        lines.append(f"")
+        lines.append(f"**KEY RULES**:")
+        lines.append(f"  - If date IS in the table below → Replace with weekday from table")
+        lines.append(f"  - If date is NOT in the table → Keep as 'Month Day' (NEVER convert to weekday)")
+        lines.append(f"  - Always remove year {base.year} if it matches article year")
+        lines.append(f"  - **CRITICAL**: Do NOT calculate weekdays on your own. The table is the ONLY source.")
+        lines.append(f"")
+        lines.append("[WEEKDAY CONVERSION TABLE - Use ONLY this table for weekday conversion]")
+        lines.append("-" * 30)
 
-        # ±7일 범위 생성
+        # ±6일 범위 생성 (7일 이내, Korea Times Style Guide #4 기준)
         for offset in range(-6, 7):
             d = base + timedelta(days=offset)
-            
-            # 1. Replacement 값 결정 (Python이 정답 확정)
+
+            # 1. Replacement 값 결정
             weekday_name = dows[d.weekday()]
-            if d < base:
-                replacement = f"last {weekday_name}" # 과거
+            if -6 <= offset <= -1:
+                replacement = f"last {weekday_name}"  # 과거: "last Monday" (AP Style)
+            elif offset == 0:
+                replacement = f"{weekday_name}"
+            elif 1 <= offset <= 6:
+                replacement = weekday_name  # 미래: "Monday"
             else:
-                replacement = f"{weekday_name}"      # 미래/오늘 (절대 last 금지)
+                replacement = f"{month_abbr[d.month]} {d.day}"
 
-            # 2. 가능한 모든 텍스트 패턴 생성 (Multi-Keys)
-            # 패턴 1: Dec. 3 (Abbr)
+            # 2. 가능한 모든 텍스트 패턴 생성
             pat_abbr = f"{month_abbr[d.month]} {d.day}"
-            # 패턴 2: December 3 (Full)
             pat_full = f"{month_full[d.month]} {d.day}"
-            # 패턴 3: 12/03 (Numeric)
             pat_num = f"{d.month}/{d.day:02d}"
-            # 패턴 4: 12-03 (Standard)
-            pat_std = f"{d.month:02d}-{d.day:02d}"
 
-            # 키 목록을 하나의 문자열로 결합
-            keys = sorted(list(set([pat_abbr, pat_full, pat_num, pat_std]))) # 중복제거
+            keys = sorted(list(set([pat_abbr, pat_full, pat_num])))
             keys_str = " | ".join([f"[{k}]" for k in keys])
 
-            # 줄 생성: Matches: [Dec. 3] | [December 3] -> Use: "Wednesday"
-            lines.append(f"Matches: {keys_str}  ->  Use: \"{replacement}\"")
+            lines.append(f" {keys_str} → \"{replacement}\"")
+
+        lines.append("-" * 30)
+        lines.append("\n[EXAMPLES]")
+        lines.append(f"• 'Tuesday, Dec. 30, {base.year - 1}' → Step 1: Year {base.year - 1} ≠ {base.year}, keep year, remove Tuesday → RESULT: 'Dec. 30, {base.year - 1}'")
+        # 과거 날짜 예제 (yesterday: offset -1)
+        yesterday = base + timedelta(days=-1)
+        yesterday_weekday = f"last {dows[yesterday.weekday()]}"
+        lines.append(f"• '{month_full[yesterday.month]} {yesterday.day}, {base.year}' (IS in table, PAST) → Step 1: Remove {base.year} → Step 2: In table → RESULT: '{yesterday_weekday}'")
+        # 미래 날짜 예제 (2 days later: offset +2)
+        future = base + timedelta(days=2)
+        future_weekday = dows[future.weekday()]
+        lines.append(f"• '{month_full[future.month]} {future.day}, {base.year}' (IS in table, FUTURE) → Step 1: Remove {base.year} → Step 2: In table → RESULT: '{future_weekday}' (NO 'last' for future)")
+        lines.append(f"• 'January 1, {base.year}' (NOT in table) → Step 1: Remove {base.year} → Step 2: NOT in table, keep Month Day → Step 3: Abbreviate → RESULT: 'Jan. 1'")
+        lines.append(f"• 'Tuesday, Dec. 30, {base.year}' (NOT in table) → Step 1: Remove {base.year} → Step 2: NOT in table, remove Tuesday → Step 3: Already abbreviated → RESULT: 'Dec. 30'")
 
         return "\n".join(lines)
-
-    def _format_kst_date_context1(self, article_date: Optional[str]) -> str:
-        """Return a compact KST date context block with MM-DD format.
-
-        - Input: article_date in ISO (YYYY-MM-DD) or None
-        - Output lines:
-          Article Date: 2025-11-26 (Wed)
-          Date context (within 7 days): 11-20 (Thu), 11-21 (Fri), ... 11-26 (Wed) *, ...
-          (To match: 'Oct. 26' → 10-26, 'December 1' → 12-01)
-
-        Uses simple MM-DD format for clear lookup.
-        LLM converts caption dates (e.g., 'Nov. 20', 'December 1') to MM-DD for matching.
-
-        If parsing fails or article_date is falsy, returns empty string.
-        """
-        if not article_date:
-            return ""
-        try:
-            base = datetime.strptime(article_date, "%Y-%m-%d").date()
-        except Exception:
-            return f"Article Date: {article_date}"
-
-        dows = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        dow = dows[base.weekday()]
-
-        # Build ±7 day compact table with MM-DD format
-        days: List[str] = []
-        for offset in range(-6, 7):  # inclusive
-            d = base + timedelta(days=offset)
-            tag = f"{d.month:02d}-{d.day:02d} ({dows[d.weekday()]})"
-            if offset == 0:
-                tag += " *"  # mark article date
-            days.append(tag)
-
-        return "\n".join([
-            f"Article Date: {base.isoformat()} ({dow})",
-            "Date context (within 7 days): " + ", ".join(days),
-        ])
 
     def _infer_local_reference_date(self, sentences: List[str], article_date: Optional[str] = None) -> Optional[str]:
         """문맥에서 로컬 기준일(today)을 추론하여 ISO 날짜로 반환.
@@ -1129,8 +1149,8 @@ class AIStylerGPT5Sentence:
 
         logger.info(f"  교정 완료: {len(corrections)}개 문장")
 
-        # Detection과 Correction 결합
-        violations = self._merge_detection_and_correction(detections, corrections, sentence_map)
+        # Detection과 Correction 결합 (article_date 전달하여 연도 후처리 적용)
+        violations = self._merge_detection_and_correction(detections, corrections, sentence_map, article_date)
 
         return {'violations': violations}
 
@@ -1734,39 +1754,39 @@ TASK:
         date_context = ""
         # [주석처리] Date Context 비활성화 - LLM이 직접 오늘 날짜를 검색하도록 변경
         # C07 규칙에서 LLM이 오늘 날짜를 확인하고 7일 이내 여부를 판단함
-        # if component_type == 'caption':
-        #     local_ref = self._infer_local_reference_date(sentences, article_date)
-        #     ctx_block = None
-        #     if article_date:
-        #         try:
-        #             ctx_block = self._format_kst_date_context(article_date)
-        #         except Exception:
-        #             ctx_block = f"Article Date (KST): {article_date}"
-        #     if local_ref and ctx_block:
-        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
-        #     elif local_ref:
-        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
-        #     elif ctx_block:
-        #         date_context = f"\n\n{ctx_block}"
-        # elif component_type == 'body':
-        #     local_ref = self._infer_local_reference_date(sentences, article_date)
-        #     ctx_block = None
-        #     if article_date:
-        #         try:
-        #             ctx_block = self._format_kst_date_context(article_date)
-        #         except Exception:
-        #             ctx_block = f"Article Date (KST): {article_date}"
-        #     if local_ref and ctx_block:
-        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
-        #     elif local_ref:
-        #         date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
-        #     elif ctx_block:
-        #         date_context = f"\n\n{ctx_block}"
-        # else:
-        #     if article_date:
-        #         ctx = self._format_kst_date_context(article_date)
-        #         if ctx:
-        #             date_context = "\n\n" + ctx
+        if component_type == 'caption':
+            local_ref = self._infer_local_reference_date(sentences, article_date)
+            ctx_block = None
+            if article_date:
+                try:
+                    ctx_block = self._format_kst_date_context(article_date)
+                except Exception:
+                    ctx_block = f"Article Date (KST): {article_date}"
+            if local_ref and ctx_block:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
+            elif local_ref:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
+            elif ctx_block:
+                date_context = f"\n\n{ctx_block}"
+        elif component_type == 'body':
+            local_ref = self._infer_local_reference_date(sentences, article_date)
+            ctx_block = None
+            if article_date:
+                try:
+                    ctx_block = self._format_kst_date_context(article_date)
+                except Exception:
+                    ctx_block = f"Article Date (KST): {article_date}"
+            if local_ref and ctx_block:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}\n{ctx_block}"
+            elif local_ref:
+                date_context = f"\n\nLocal Reference Day (KST): {local_ref}"
+            elif ctx_block:
+                date_context = f"\n\n{ctx_block}"
+        else:
+            if article_date:
+                ctx = self._format_kst_date_context(article_date)
+                if ctx:
+                    date_context = "\n\n" + ctx
 
         # 사용자 추가 지침이 있으면 상단에 명시
         extra = getattr(self, '_extra_instructions', None)
@@ -1802,9 +1822,10 @@ TASK:
         return content
 
     def _validate_component_match(self, detections: List[Dict]) -> List[Dict]:
-        """Component와 Rule ID의 일치 여부 검증 (Post-processing filter)"""
+        """Component와 Rule ID의 일치 여부 검증 + 중복 제거 (Post-processing filter)"""
         valid_detections = []
         filtered_count = 0
+        duplicate_count = 0
 
         # Component mapping: sentence_id prefix -> expected rule_id prefix
         component_map = {
@@ -1812,6 +1833,9 @@ TASK:
             'B': 'A',  # Body -> Article/Body rules
             'C': 'C'   # Caption -> Caption rules
         }
+
+        # Track seen (sentence_id, rule_id) pairs to remove duplicates
+        seen_pairs = set()
 
         for d in detections:
             sentence_id = d['sentence_id']
@@ -1833,10 +1857,22 @@ TASK:
                 filtered_count += 1
                 continue
 
+            # Check for duplicate (sentence_id, rule_id) pair
+            pair = (sentence_id, rule_id)
+            if pair in seen_pairs:
+                logger.info(f"  중복 제거: {sentence_id} - {rule_id} (같은 문장에 같은 규칙 중복 검출)")
+                duplicate_count += 1
+                continue
+
+            seen_pairs.add(pair)
             valid_detections.append(d)
 
         if filtered_count > 0:
-            logger.info(f"  Component 불일치 {filtered_count}개 제거됨 (Total: {len(detections)} → Valid: {len(valid_detections)})")
+            logger.info(f"  Component 불일치 {filtered_count}개 제거됨")
+        if duplicate_count > 0:
+            logger.info(f"  중복 {duplicate_count}개 제거됨")
+        if filtered_count > 0 or duplicate_count > 0:
+            logger.info(f"  Total: {len(detections)} → Valid: {len(valid_detections)}")
 
         return valid_detections
 
@@ -2076,9 +2112,13 @@ TASK:
         self,
         detections: List[Dict],
         corrections: Dict[str, str],
-        sentence_map: Dict[str, str]
+        sentence_map: Dict[str, str],
+        article_date: Optional[str] = None
     ) -> List[StyleViolation]:
-        """Detection과 Correction 결과를 결합하여 StyleViolation 생성"""
+        """Detection과 Correction 결과를 결합하여 StyleViolation 생성
+        
+        article_date가 제공되면 corrected_sentence에서 해당 연도를 제거하는 후처리 적용
+        """
 
         violations = []
 
@@ -2100,6 +2140,14 @@ TASK:
 
             original_sentence = sentence_map.get(sentence_id, "")
             corrected_sentence = corrections.get(sentence_id, original_sentence)
+            
+            # A04 연도 제거 후처리: article_year와 동일한 연도를 날짜 패턴에서 제거
+            if article_date and corrected_sentence:
+                try:
+                    article_year = int(str(article_date).split('T')[0].split('-')[0])
+                    corrected_sentence = self._postprocess_year_removal(corrected_sentence, article_year)
+                except Exception:
+                    pass
 
             has_correction = sentence_id in corrections
             logger.info(f"    #{i+1}: {rid} → {canonical_rid} @ {sentence_id} - Correction: {'✓' if has_correction else '✗'}")
@@ -2495,13 +2543,13 @@ OUTPUT: sentence_id and corrected_sentence for each."""
         date_context = ""
         # 교정 단계에서는 Article Date 기반 Date context 블록을 항상 제공
         # (FINAL STEP - DATE PROCESSING에서 이 리스트를 절대 기준으로 사용)
-        # if article_date:
-        #     try:
-        #         ctx = self._format_kst_date_context(article_date)
-        #     except Exception:
-        #         ctx = f"Article Date: {article_date}"
-        #     if ctx:
-        #         date_context = ctx + "\n\n"
+        if article_date:
+            try:
+                ctx = self._format_kst_date_context(article_date)
+            except Exception:
+                ctx = f"Article Date: {article_date}"
+            if ctx:
+                date_context = ctx + "\n\n"
 
         # BODY 문장인지 확인 (B로 시작하는 문장이 있는지)
         is_body = any(str(sid).startswith('B') for sid in sentences_to_correct.keys())

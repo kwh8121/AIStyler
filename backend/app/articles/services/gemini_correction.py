@@ -72,7 +72,7 @@ async def analyze_style_violations_gemini(
         }
 
         response = client.models.generate_content(
-            model=settings.GEMINI_MODEL or "gemini-2.5-flash",
+            model=settings.GEMINI_MODEL or "gemini-3-flash-preview",
             contents=[analysis_prompt, text],
             config={
                 "response_mime_type": "application/json",
@@ -194,7 +194,7 @@ async def call_gemini_correction_stream(
             collected: List[str] = []
 
             stream = client.models.generate_content_stream(
-                model=settings.GEMINI_MODEL or "gemini-2.5-flash",
+                model=settings.GEMINI_MODEL or "gemini-3-flash-preview",
                 contents=[correction_prompt],
                 config={
                     # 필요 시 온도/토큰 등 세부값 노출 가능

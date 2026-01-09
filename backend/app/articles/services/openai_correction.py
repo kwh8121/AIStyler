@@ -10,7 +10,7 @@ import logging
 import pysbd
 import uuid
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import AsyncGenerator, List, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,61 @@ from .prompt_builder import (
 import re
 
 logger = logging.getLogger(__name__)
+
+
+def get_date_context() -> str:
+    """Rule 4, 5, 10, 23을 위한 현재 날짜 및 날짜 매핑 테이블 생성"""
+    now = datetime.now()
+    
+    # AP Style Month Abbreviations (Rule 10: March-July are full names)
+    months_abbr = {
+        1: "Jan.", 2: "Feb.", 3: "March", 4: "April", 5: "May", 6: "June",
+        7: "July", 8: "Aug.", 9: "Sept.", 10: "Oct.", 11: "Nov.", 12: "Dec."
+    }
+    
+    today_str = f"{months_abbr[now.month]} {now.day}, {now.year} ({now.strftime('%A')})"
+    
+    lines = []
+    lines.append(f"REFERENCE DATES INFORMATION (Today is {today_str})")
+    lines.append("="*40)
+    lines.append("[DATE REPLACEMENT TABLE]")
+    lines.append("Instructions: If you find these dates in the text, replace them EXACTLY as mapped below.")
+    lines.append("-" * 30)
+
+    # ±7일 범위 생성 (과거 7일 ~ 미래 3일)
+    dows = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    for offset in range(-7, 4):
+        d = now + timedelta(days=offset)
+        mon_name = months_abbr[d.month]
+        full_date_key = f"{mon_name} {d.day}"
+        weekday = dows[d.weekday()]
+        
+        # Rule 4 Logic: 1-6 days ago -> weekday, 7+ days ago -> Month Day
+        if -6 <= offset <= -1:
+            replacement = weekday # 1-6 days ago
+            status = "Within 7 days (Use Weekday)"
+        elif offset == 0:
+            replacement = f"{weekday}"
+            status = "Today"
+        elif 1 <= offset <= 6:
+             replacement = weekday
+             status = "Upcoming (Use Weekday)"
+        else:
+            replacement = full_date_key
+            status = "Exact Date (Use Month Day)"
+            
+        lines.append(f" * {full_date_key} -> Use: \"{replacement}\" ({status})")
+
+    lines.append("-" * 30)
+    lines.append("\n[STRICT FORMATTING RULES]")
+    lines.append(f"1. Rule 23 (Year): Omit the year if it is current ({now.year}). (e.g., 'Nov. 15, {now.year}' -> 'Nov. 15')")
+    lines.append("2. Rule 10 (Months): NEVER abbreviate March, April, May, June, July. ALWAYS abbreviate others.")
+    lines.append("3. Rule 5 (Ranges):")
+    lines.append("   - Same month: 'Jan. 15-20'")
+    lines.append("   - Different months: 'Jan. 28-Feb. 5' (Include month for both if different)")
+    lines.append("4. Chain of Thought: Identify the absolute date first, check the table above, then apply Rule 23/10/5.")
+    
+    return "\n".join(lines)
 
 
 def dump_prompt(kind: str, prompt_text: str, metadata: Optional[Dict] = None) -> None:
@@ -85,8 +140,11 @@ async def analyze_style_violations_openai(
 
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
+        # 날짜 컨텍스트 생성
+        date_context = get_date_context()
+
         # 분석용 프롬프트 생성
-        analysis_prompt = generate_openai_style_analysis_prompt(style_guides, category.value)
+        analysis_prompt = generate_openai_style_analysis_prompt(style_guides, category.value, date_context=date_context)
         dump_prompt(
             "analysis",
             analysis_prompt,
@@ -281,11 +339,15 @@ async def call_openai_correction_stream(
             if prompt:
                 logger.info(f"Additional instructions provided: {prompt[:100]}...")
 
+            # 날짜 컨텍스트 생성
+            date_context = get_date_context()
+
             correction_prompt = generate_openai_correction_prompt(
                 before_en,
                 violations,
                 style_guides,
                 prompt,
+                date_context=date_context
             )
 
             dump_prompt(

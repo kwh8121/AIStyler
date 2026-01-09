@@ -227,7 +227,7 @@ class AIStylerGPT5_3Experts(AIStylerGPT5Sentence):
         if self.use_compressed_prompt:
             instructions = self._build_detection_instructions_for_component_compressed(component_type, specific_rules)
         else:
-            instructions = self._build_detection_instructions_for_expert(component_type, specific_rules, expert_name)
+            instructions = self._build_detection_instructions_for_expert(component_type, specific_rules, expert_name, article_date)
         input_content = self._build_input_content_for_component(component_type, sentences, article_date)
 
         # 프롬프트 로깅
@@ -278,7 +278,8 @@ class AIStylerGPT5_3Experts(AIStylerGPT5Sentence):
         self,
         component_type: str,
         expert_rules: Dict,
-        expert_name: str
+        expert_name: str,
+        article_date: Optional[str] = None
     ) -> str:
         """전문가용 Detection 지시사항 생성 - Balanced precision and recall"""
 
@@ -318,7 +319,11 @@ class AIStylerGPT5_3Experts(AIStylerGPT5Sentence):
             rules_text.append(rule_text)
 
         rules_section = '\n\n'.join(rules_text)
-        article_date = article_date = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+        if not article_date:
+            try:
+                article_date = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+            except Exception:
+                article_date = datetime.now().date().isoformat()
         extra = getattr(self, '_extra_instructions', None)
         instructions = f"""You are an expert copy editor for the Korea Times.
 

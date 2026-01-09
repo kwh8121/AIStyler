@@ -8,14 +8,15 @@
       "H09",
       "H10",
       "H11",
+      "A10",
+      "A13",
       "A14",
+      "A23",
       "A25",
       "A31",
       "A34",
       "A35",
       "C09",
-      "C11",
-      "C12",
       "C13",
       "C15",
       "C18",
@@ -29,7 +30,7 @@
       "caption": 24,
       "body": 35
     },
-    "last_updated": "2025-11-17T14:00:00.000000"
+    "last_updated": "2026-01-08T12:00:00.000000"
   },
   "rules": {
     "H01": {
@@ -513,15 +514,32 @@
       "rule_id": "A04",
       "component": "body",
       "group": "Date Format",
-      "description": "**Strict Context Lookup:** Use the 'Date context' list provided in the prompt as the **absolute reference**. \n\n1. **Check if the date exists in the list:**\n   - If the date is **NOT** in the list (e.g., Nov. 12 is not in '11-13 ~ 11-25'), maintain the 'Month Day' format (e.g., 'Nov. 12'). **DO NOT convert to a weekday.**\n   - If the date **IS** in the list and is in the past: Rewrite as 'last <weekday>' (or just '<weekday>' if clearer).\n   - If the date **IS** in the list and is in the future: Rewrite as '<weekday>'.\n\n2. **Format:** When keeping 'Month Day', apply Rule A10 (abbreviate months) automatically. Do not add the year unless it was in the original text.",
+      "description": "**Complete Date Formatting Rule**:\n\n**STEP 1: Year Handling (ALWAYS APPLY FIRST)**\n- If year is DIFFERENT from article year → Keep year, remove weekday, apply Step 3 for month abbreviation, END.\n- If year is SAME as article year OR no year present → REMOVE year (even if month is already abbreviated), proceed to Step 2.\n\n**STEP 2: Weekday Conversion (TABLE LOOKUP ONLY)**\n- Check if the date (Month Day) appears in the Reference Table provided in context.\n- If date IS in the table → Replace ENTIRE date with the weekday shown in the table, END.\n- If date is NOT in the table → Do NOT convert to weekday. Remove any existing weekday, keep 'Month Day' format, proceed to Step 3.\n- **WARNING**: NEVER calculate weekdays yourself. ONLY use the table. If date is not in table, keep as 'Month Day'.\n\n**STEP 3: Month Abbreviation**\n- When month is followed by a specific day (1-31): MUST abbreviate Jan., Feb., Aug., Sept., Oct., Nov., Dec. / NEVER abbreviate March, April, May, June, July.\n- When month appears with ONLY year (no day): Spell out ALL months fully (e.g., 'September 2023').\n\n**KEY RULES**:\n- If date IS in the Reference Table → Replace with weekday from table\n- If date is NOT in the Reference Table → Keep as 'Month Day' format (NEVER convert to weekday)\n- Always remove year if it matches article year\n- **CRITICAL**: Do NOT calculate weekdays on your own. The table is the ONLY source for weekday conversion.",
       "examples": [
         {
-          "incorrect": "The meeting is scheduled for November 12 [Context: 11-13 to 11-25]",
-          "correct": "The meeting is scheduled for Nov. 12"
+          "incorrect": "The festival ended on Tuesday, December 30, 2025 [Article year: 2026]",
+          "correct": "The festival ended on Dec. 30, 2025",
+          "comment": "Step 1: Year 2025 ≠ 2026, keep year, remove weekday Tuesday. Step 3: Abbreviate December → Dec. 30, 2025"
         },
         {
-          "incorrect": "Guests leave on November 13 [Context: 11-13 to 11-25]",
-          "correct": "Guests leave on Thursday"
+          "incorrect": "The event is on Wednesday, January 5, 2026 [Article year: 2026, Jan 5 IS in table]",
+          "correct": "The event is on last Monday",
+          "comment": "Step 1: Remove 2026. Step 2: Jan 5 IS in table → Replace with weekday from table"
+        },
+        {
+          "incorrect": "The meeting is scheduled for January 1, 2026. [Article year: 2026, Jan 1 NOT in table]",
+          "correct": "The meeting is scheduled for Jan. 1.",
+          "comment": "Step 1: Remove 2026. Step 2: Jan 1 NOT in table → Do NOT convert to weekday, keep Month Day. Step 3: Abbreviate → Jan. 1"
+        },
+        {
+          "incorrect": "Commuters cross a street in downtown Seoul, Tuesday, December 30 2026. [Article year: 2026, Dec 30 NOT in table]",
+          "correct": "Commuters cross a street in downtown Seoul, Dec. 30.",
+          "comment": "Step 1: Remove 2026. Step 2: Dec 30 NOT in table → Remove weekday Tuesday, keep Month Day. Step 3: Already abbreviated → Dec. 30"
+        },
+        {
+          "incorrect": "The project starts in Sept. 2023",
+          "correct": "The project starts in September 2023",
+          "comment": "Month + Year only (no day) → Spell out fully"
         }
       ]
     },
@@ -593,15 +611,15 @@
       "rule_id": "A10",
       "component": "body",
       "group": "Date Format",
-      "description": "**Month Abbreviation Rules:**\n1. **Must Abbreviate:** When followed by a specific date (1-31), YOU MUST abbreviate these 7 months: **Jan., Feb., Aug., Sept., Oct., Nov., Dec.**\n2. **Never Abbreviate:** DO NOT abbreviate these 5 months, even with dates: **March, April, May, June, July**.\n3. **No Date:** If only the month (or Month + Year) is listed, spell out ALL months fully (e.g., 'in October 2024').",
+      "description": "Abbreviate months only if they contain dates (except March, April, May, June, July). Fully spell out if mentioning only month and year.",
       "examples": [
         {
-          "incorrect": "He uploaded the video on October 14.",
-          "correct": "He uploaded the video on Oct. 14."
+          "incorrect": "The meeting is scheduled for November 15, 2023.",
+          "correct": "The meeting is scheduled for Nov. 15, 2023."
         },
         {
-          "incorrect": "The event is on August 15 and June 10. The project starts in Sept. 2023.",
-          "correct": "The event is on Aug. 15 and June 10. The project starts in September 2023."
+          "incorrect": "The project starts in Sept. 2023.",
+          "correct": "The project starts in September 2023."
         }
       ]
     },
@@ -770,12 +788,8 @@
       "description": "Explicitly instruct that if the event or action occurred within the current calendar year, omit the year.",
       "examples": [
         {
-          "incorrect": "BTS released their album Proof in 2024[this year: 2025].",
-          "correct": "BTS released their album Proof in 2024."
-        },
-        {
-          "incorrect": "The protest took place on July 14, 2025.[this year: 2025]",
-          "correct": "The protest took place on July 14."
+          "incorrect": "BTS released their album Proof in 2024.",
+          "correct": "BTS released their album Proof in June."
         }
       ]
     },

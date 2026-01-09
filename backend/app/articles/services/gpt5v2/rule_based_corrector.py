@@ -20,6 +20,13 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 import calendar
+from .date_constants import (
+    MONTH_FULL_NAMES,
+    MONTH_ABBREVIATIONS,
+    WEEKDAY_NAMES,
+    get_month_number,
+    get_month_abbreviation
+)
 
 
 @dataclass
@@ -295,15 +302,9 @@ class RuleBasedCorrector:
             'Korea Times'
         ]
 
-        # C13 - 날짜 범위 표기용 월 매핑
-        self.months_full = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ]
-        self.months_abbr = [
-            'Jan.', 'Feb.', 'Mar.', 'April', 'May', 'June',
-            'July', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'
-        ]
+        # C13 - 날짜 범위 표기용 월 매핑 (centralized from date_constants)
+        self.months_full = MONTH_FULL_NAMES[1:]  # Skip empty first element
+        self.months_abbr = MONTH_ABBREVIATIONS[1:]  # Skip empty first element
 
         # 월 이름 → 인덱스 매핑 (0-11)
         self.month_to_index = {}
@@ -315,11 +316,8 @@ class RuleBasedCorrector:
             # 점 포함 약어
             self.month_to_index[self.months_abbr[i].lower()] = i
 
-        # C12 - 요일 매핑
-        self.weekdays = [
-            'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-            'Friday', 'Saturday', 'Sunday'
-        ]
+        # C12 - 요일 매핑 (centralized from date_constants)
+        self.weekdays = WEEKDAY_NAMES
         self.weekday_to_index = {day.lower(): i for i, day in enumerate(self.weekdays)}
 
     def correct_article(self, article_text: str, article_date: str = None) -> Dict:
@@ -1457,14 +1455,14 @@ class RuleBasedCorrector:
         """
         corrections = []
         corrected = text
-        
-        # Month mapping
-        month_map = {
-            'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
-            'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
-            'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9,
-            'oct': 10, 'october': 10, 'nov': 11, 'november': 11, 'dec': 12, 'december': 12
-        }
+
+        # Month mapping (use centralized function)
+        # Build month_map dynamically from date_constants
+        month_map = {}
+        for i, month in enumerate(MONTH_FULL_NAMES[1:], start=1):
+            month_map[month.lower()] = i
+        for i, abbr in enumerate(MONTH_ABBREVIATIONS[1:], start=1):
+            month_map[abbr.lower().rstrip('.')] = i
 
         # Regex Pattern Components
         # 1. Preamble: Optional 'on' (capture group 1)
@@ -1795,21 +1793,18 @@ class RuleBasedCorrector:
         month_names = r"January|February|March|April|May|June|July|August|September|October|November|December|Jan\.|Feb\.|Mar\.|Apr\.|Aug\.|Sep\.|Sept\.|Oct\.|Nov\.|Dec\."
         # Pattern: Optional 'on' + Month + Optional dot + Day + optional gear/comma + optional Year
         pattern = rf'(?i)(?P<on>on\s+)?\b(?P<month>{month_names})(?P<extdot>\.)?\s+(?P<day>\d{{1,2}})(?:[.,]?\s*(?P<year>\d{{4}}))?\b'
-        
-        ap_abbr = {
-            'january': 'Jan.', 'jan.': 'Jan.',
-            'february': 'Feb.', 'feb.': 'Feb.',
-            'march': 'March', 'mar.': 'March',
-            'april': 'April', 'apr.': 'April',
-            'may': 'May',
-            'june': 'June', 'jun.': 'June',
-            'july': 'July', 'jul.': 'July',
-            'august': 'Aug.', 'aug.': 'Aug.',
-            'september': 'Sept.', 'sep.': 'Sept.', 'sept.': 'Sept.',
-            'october': 'Oct.', 'oct.': 'Oct.',
-            'november': 'Nov.', 'nov.': 'Nov.',
-            'december': 'Dec.', 'dec.': 'Dec.'
-        }
+
+        # AP abbreviation mapping (use centralized get_month_abbreviation)
+        # Build dynamically from date_constants
+        ap_abbr = {}
+        for i, month in enumerate(MONTH_FULL_NAMES[1:], start=1):
+            abbr = get_month_abbreviation(month, has_day=True)
+            ap_abbr[month.lower()] = abbr
+        for i, abbr_with_dot in enumerate(MONTH_ABBREVIATIONS[1:], start=1):
+            abbr = get_month_abbreviation(abbr_with_dot, has_day=True)
+            ap_abbr[abbr_with_dot.lower()] = abbr
+            # Also handle versions without period
+            ap_abbr[abbr_with_dot.lower().rstrip('.')] = abbr
 
         # Use finditer and apply in reverse to keep positions valid
         matches = list(re.finditer(pattern, corrected))
